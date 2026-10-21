@@ -1,0 +1,65 @@
+@page "/"
+@attribute [Authorize]
+@inject ArrangerApi Api
+@inject CurrentUser CurrentUser
+
+<PageTitle>Arranger</PageTitle>
+
+<h1>Arranger</h1>
+
+@if (error != null)
+{
+    <div class="alert alert-danger">@error</div>
+}
+
+<a class="btn btn-primary mb-4" href="new">New</a>
+
+<section>
+    <h2 class="h5">My arrangements</h2>
+    @if (arrangements == null)
+    {
+        <p>Loading…</p>
+    }
+    else if (arrangements.Count == 0)
+    {
+        <p>None yet. Create one, or open a link someone shared with you.</p>
+    }
+    else
+    {
+        <div class="list-group">
+            @foreach (var arrangement in arrangements)
+            {
+                <a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" href="@arrangement.Id">
+                    <span>
+                        @arrangement.Title
+                        @if (arrangement.IsOwner)
+                        {
+                            <span class="badge bg-primary ms-2">Owner</span>
+                        }
+                        else if (arrangement.IsAdmin)
+                        {
+                            <span class="badge bg-secondary ms-2">Admin</span>
+                        }
+                    </span>
+                    <small class="text-muted">
+                        @arrangement.MemberCount members · @CurrentUser.ToLocalTime(arrangement.CreatedAt).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
+                    </small>
+                </a>
+            }
+        </div>
+    }
+</section>
+
+@code {
+    private List<ArrangementSummary>? arrangements;
+    private string? error;
+
+    /// <inheritdoc />
+    protected override async Task OnInitializedAsync()
+    {
+        await CurrentUser.GetSettingsAsync();
+        var result = await Api.GetAsync<List<ArrangementSummary>>("api/arrangements");
+        arrangements = result.Value ?? [];
+        error = result.Error;
+    }
+}

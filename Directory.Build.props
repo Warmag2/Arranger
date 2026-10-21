@@ -1,0 +1,26 @@
+<Project>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <AssemblyName>Faemiyah.$(MSBuildProjectName)</AssemblyName>
+    <RootNamespace>Faemiyah.$(MSBuildProjectName)</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <PropertyGroup Label="Product metadata">
+    <Authors>Warma</Authors>
+    <Company>Faemiyah</Company>
+    <Product>Arranger</Product>
+    <Copyright>Faemiyah 2026</Copyright>
+    <RepositoryUrl>https://github.com/Warmag2/Arranger</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/Warmag2/Arranger</PackageProjectUrl>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="SonarAnalyzer.CSharp" Version="10.35.0.4138" PrivateAssets="all" />
+  </ItemGroup>
+
+</Project>

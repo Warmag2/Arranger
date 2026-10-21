@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Arranger.Contracts\Arranger.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Arranger.Server\Arranger.Server.csproj" />
+  </ItemGroup>
+
+</Project>

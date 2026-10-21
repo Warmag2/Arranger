@@ -1,0 +1,21 @@
+<img class="avatar" src="@($"api/users/{UserId}/picture?v={Revision}")" width="@Size" height="@Size" alt="" loading="lazy" />
+
+@code {
+    /// <summary>
+    /// The public ID of the user whose picture to show.
+    /// </summary>
+    [Parameter, EditorRequired]
+    public Guid UserId { get; set; }
+
+    /// <summary>
+    /// The width and height in pixels.
+    /// </summary>
+    [Parameter]
+    public int Size { get; set; } = 32;
+
+    /// <summary>
+    /// Changes whenever the picture may have changed, so the browser does not reuse a stale copy.
+    /// </summary>
+    [Parameter]
+    public int Revision { get; set; }
+}

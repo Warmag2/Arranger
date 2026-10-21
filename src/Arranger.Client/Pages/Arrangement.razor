@@ -1,0 +1,200 @@
+@page "/{Id:guid}"
+@page "/{Id:guid}/{TabName}"
+@attribute [Authorize]
+@inject ArrangerApi Api
+@inject CurrentUser CurrentUser
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+<PageTitle>@(snapshot?.Title ?? "Arrangement") · Arranger</PageTitle>
+
+@if (error != null)
+{
+    <div class="alert alert-danger">@error</div>
+}
+
+@if (snapshot == null)
+{
+    <p>@(missing ? "This arrangement does not exist. It may have been deleted." : "Connecting…")</p>
+}
+else
+{
+    var tab = CurrentTab();
+
+    @if (live?.IsLive != true)
+    {
+        <div class="alert alert-warning py-1">Reconnecting… Changes by others will show up once the connection is back.</div>
+    }
+
+    <h1>@snapshot.Title</h1>
+    @if (snapshot.Description.Length > 0)
+    {
+        <p class="description">@snapshot.Description</p>
+    }
+
+    @if (snapshot.FindMember(userId) == null)
+    {
+        @if (snapshot.IsParticipationClosed)
+        {
+            <div class="alert alert-secondary">Participation is closed.</div>
+        }
+        else
+        {
+            <button class="btn btn-primary mb-3" disabled="@busy" @onclick="JoinAsync">Join</button>
+        }
+    }
+
+    <ul class="nav nav-tabs mb-3">
+        <li class="nav-item">
+            <a class="nav-link @Active(tab, ArrangementTab.Schedule) @Muted(snapshot.IsScheduleDisabled)" href="@TabPath(ArrangementTab.Schedule)">Schedule</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link @Active(tab, ArrangementTab.Expenses) @Muted(snapshot.IsExpensesDisabled)" href="@TabPath(ArrangementTab.Expenses)">Expenses</a>
+        </li>
+        <li class="nav-item ms-auto">
+            <a class="nav-link @Active(tab, ArrangementTab.Settings)" href="@TabPath(ArrangementTab.Settings)" title="Settings" aria-label="Settings">⚙&#xFE0E;</a>
+        </li>
+    </ul>
+
+    @switch (tab)
+    {
+        case ArrangementTab.Expenses:
+            <Expenses Snapshot="snapshot" UserId="userId" Busy="busy" Run="RunAsync" />
+            break;
+        case ArrangementTab.Settings:
+            <ArrangementSettings Snapshot="snapshot" UserId="userId" Busy="busy" Run="RunAsync" />
+            break;
+        default:
+            <Schedule Snapshot="snapshot" UserId="userId" Busy="busy" Run="RunAsync" />
+            break;
+    }
+}
+
+@code {
+    private ArrangementLiveConnection? live;
+    private ArrangementSnapshot? snapshot;
+    private Guid connectedId;
+    private bool missing;
+    private Guid userId;
+    private string? error;
+    private bool busy;
+
+    /// <summary>
+    /// The public ID of the arrangement.
+    /// </summary>
+    [Parameter]
+    public Guid Id { get; set; }
+
+    /// <summary>
+    /// The tab in the link, e.g. <c>expenses</c>, or <b>null</b> for the default one.
+    /// </summary>
+    [Parameter]
+    public string? TabName { get; set; }
+
+    /// <inheritdoc />
+    protected override async Task OnParametersSetAsync()
+    {
+        error = null;
+        if (live != null && connectedId == Id)
+        {
+            // Only the tab changed.
+            return;
+        }
+
+        await DisposeAsync();
+        snapshot = null;
+        missing = false;
+        connectedId = Id;
+        userId = (await CurrentUser.GetSettingsAsync())?.UserId ?? Guid.Empty;
+        live = new ArrangementLiveConnection(Navigation, JS, Id, OnSnapshotAsync, () => InvokeAsync(StateHasChanged));
+        await live.StartAsync();
+    }
+
+    /// <inheritdoc />
+    public async ValueTask DisposeAsync()
+    {
+        if (live != null)
+        {
+            await live.DisposeAsync();
+            live = null;
+        }
+    }
+
+    private static string? Active(ArrangementTab current, ArrangementTab tab)
+    {
+        return current == tab ? "active" : null;
+    }
+
+    private static string? Muted(bool isDisabled)
+    {
+        return isDisabled ? "text-body-tertiary" : null;
+    }
+
+    private string TabPath(ArrangementTab tab)
+    {
+        var name = tab switch
+        {
+            ArrangementTab.Expenses => "expenses",
+            ArrangementTab.Settings => "settings",
+            _ => "schedule",
+        };
+
+        return $"{Id}/{name}";
+    }
+
+    private ArrangementTab CurrentTab()
+    {
+        return Enum.TryParse<ArrangementTab>(TabName, true, out var tab) && Enum.IsDefined(tab) ? tab : snapshot!.DefaultTab();
+    }
+
+    private Task OnSnapshotAsync(ArrangementSnapshot? value)
+    {
+        if (value == null)
+        {
+            snapshot = null;
+            missing = true;
+        }
+        else
+        {
+            Show(value);
+        }
+
+        return InvokeAsync(StateHasChanged);
+    }
+
+    private Task JoinAsync()
+    {
+        return RunAsync(HttpMethod.Post, "join", null);
+    }
+
+    private async Task<bool> RunAsync(HttpMethod method, string? action, object? body)
+    {
+        busy = true;
+        error = null;
+        var path = action == null ? $"api/arrangements/{Id}" : $"api/arrangements/{Id}/{action}";
+        var result = await Api.SendAsync<ArrangementSnapshot>(method, path, body);
+        busy = false;
+        if (result.IsSuccess)
+        {
+            Show(result.Value);
+        }
+        else
+        {
+            error = result.Error;
+        }
+
+        // Child components call this through a plain delegate, which does not re-render this page by itself.
+        StateHasChanged();
+        return result.IsSuccess;
+    }
+
+    private void Show(ArrangementSnapshot value)
+    {
+        // Responses and pushes can arrive in either order; never go back to an older state, or revive a deleted one.
+        if (!missing && value.Version.Supersedes(snapshot?.Version))
+        {
+            snapshot = value;
+        }
+    }
+}

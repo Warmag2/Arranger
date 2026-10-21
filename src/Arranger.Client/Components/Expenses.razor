@@ -1,0 +1,309 @@
+@inject CurrentUser CurrentUser
+@inject IJSRuntime JS
+
+@{
+    var canEdit = Snapshot.FindMember(UserId) != null && !Snapshot.IsExpensesDisabled;
+    var baseCurrency = Snapshot.BaseCurrency;
+    var missing = ExpenseMath.MissingRates(Snapshot.Expenses, baseCurrency, Snapshot.ExchangeRates);
+    var isInBase = missing.Count == 0;
+    var balances = isInBase
+        ? new Dictionary<string, IReadOnlyDictionary<Guid, decimal>> { [baseCurrency] = ExpenseMath.InBaseCurrency(Snapshot.Expenses, baseCurrency, Snapshot.ExchangeRates) }
+        : ExpenseMath.Balances(Snapshot.Expenses).ToDictionary(b => b.Key, b => (IReadOnlyDictionary<Guid, decimal>)b.Value);
+    var spent = isInBase
+        ? new Dictionary<string, IReadOnlyDictionary<Guid, decimal>> { [baseCurrency] = ExpenseMath.InBaseCurrency(ExpenseMath.Spent(Snapshot.Expenses), baseCurrency, Snapshot.ExchangeRates) }
+        : ExpenseMath.Spent(Snapshot.Expenses).ToDictionary(b => b.Key, b => (IReadOnlyDictionary<Guid, decimal>)b.Value);
+    var payments = balances.SelectMany(b => ExpenseMath.SuggestPayments(b.Value, b.Key, Today())).ToList();
+}
+
+@if (Snapshot.IsExpensesDisabled)
+{
+    <div class="alert alert-secondary">The expenses are closed.</div>
+}
+
+@if (canEdit && isFormOpen)
+{
+    <form class="row g-2 align-items-end mb-3" @onsubmit="SaveAsync">
+        <div class="col-12 col-md-6">
+            <label class="form-label" for="expense-description">Description</label>
+            <input id="expense-description" class="form-control" maxlength="@ExpenseRules.DescriptionMaxLength" @bind="description" />
+        </div>
+        <div class="col-6 col-md-3">
+            <label class="form-label" for="expense-amount">Amount</label>
+            <input id="expense-amount" class="form-control" type="number" min="0" step="any" @bind="amount" />
+        </div>
+        <div class="col-6 col-md-3">
+            <label class="form-label" for="expense-currency">Currency</label>
+            <select id="expense-currency" class="form-select" @bind="currency">
+                @* An edited expense or a suggested payment may use a currency that is not listed. *@
+                @foreach (var option in Snapshot.AvailableCurrencies().Append(currency).Distinct())
+                {
+                    <option value="@option">@option · @Currencies.Name(option)</option>
+                }
+            </select>
+        </div>
+        <div class="col-6 col-md-3">
+            <label class="form-label" for="expense-payer">Paid by</label>
+            <select id="expense-payer" class="form-select" @bind="paidBy">
+                @foreach (var member in Snapshot.Members)
+                {
+                    <option value="@member.UserId">@member.UserName</option>
+                }
+            </select>
+        </div>
+        <div class="col-6 col-md-3">
+            <label class="form-label" for="expense-date">Date</label>
+            <input id="expense-date" class="form-control" type="date" @bind="date" />
+        </div>
+        <div class="col-12">
+            <div class="form-label">@(isPayment ? "Paid to" : "Shared by")</div>
+            <div class="d-flex flex-wrap gap-1">
+                @foreach (var member in Snapshot.Members)
+                {
+                    var isIn = participants.Contains(member.UserId);
+                    <button type="button" class="btn btn-sm @(isIn ? "btn-primary" : "btn-outline-secondary")" aria-pressed="@isIn" @onclick="() => Toggle(member.UserId)">@member.UserName</button>
+                }
+            </div>
+        </div>
+        <div class="col-12 form-check ms-2">
+            <input id="expense-payment" class="form-check-input" type="checkbox" @bind="isPayment" />
+            <label class="form-check-label" for="expense-payment">Payment to another member</label>
+        </div>
+        <div class="col-12">
+            <button type="submit" class="btn btn-primary" disabled="@Busy">@(editingId == null ? "Add" : "Save")</button>
+            <button type="button" class="btn btn-outline-secondary" @onclick="() => isFormOpen = false">Cancel</button>
+        </div>
+        @if (formError != null)
+        {
+            <div class="col-12 text-danger">@formError</div>
+        }
+    </form>
+}
+else if (canEdit)
+{
+    <button class="btn btn-outline-primary mb-3" @onclick="() => Open(null)">Add expense</button>
+}
+
+@if (Snapshot.Expenses.Count == 0)
+{
+    <p class="text-body-secondary">No expenses yet.</p>
+}
+else
+{
+    <div class="table-responsive mb-3">
+        <table class="table table-sm align-middle">
+            <thead>
+                <tr>
+                    <th scope="col">Date</th>
+                    <th scope="col">Description</th>
+                    <th scope="col" class="text-end" colspan="2">Amount</th>
+                    <th scope="col">Paid by</th>
+                    <th scope="col">For</th>
+                    @if (canEdit)
+                    {
+                        <th scope="col"></th>
+                    }
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var expense in Snapshot.Expenses)
+                {
+                    <tr class="@(expense.IsSettlementPayment ? "table-info" : null)">
+                        <td class="text-nowrap">@expense.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</td>
+                        <td>@expense.Description</td>
+                        @* Paid in another currency: that amount, then its value in the base currency. *@
+                        <td class="text-end text-nowrap text-body-secondary">@(expense.Currency == baseCurrency ? null : Money(expense.Amount, expense.Currency))</td>
+                        <td class="text-end text-nowrap">@(ExpenseMath.InBaseCurrency(expense.Amount, expense.Currency, baseCurrency, Snapshot.ExchangeRates) is { } inBase ? Money(inBase, baseCurrency) : $"? {baseCurrency}")</td>
+                        <td>@Name(expense.PaidByUserId)</td>
+                        <td>@SharedBy(expense)</td>
+                        @if (canEdit)
+                        {
+                            <td class="text-nowrap text-end">
+                                <button class="btn btn-sm btn-outline-secondary" disabled="@Busy" title="Edit" @onclick="() => Open(expense)">✎&#xFE0E;</button>
+                                <button class="btn btn-sm btn-outline-danger" disabled="@Busy" title="Delete" @onclick="() => DeleteAsync(expense)">×</button>
+                            </td>
+                        }
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@if (Snapshot.Expenses.Count > 0)
+{
+    <h2 class="h5">Balances@(isInBase ? $" in {baseCurrency}" : null)</h2>
+    @if (!isInBase)
+    {
+        <div class="alert alert-warning">Set the exchange rate of @string.Join(", ", missing) in <a href="@Snapshot.Id/settings">⚙ settings</a> to see the balances in @baseCurrency.</div>
+    }
+    <div class="row g-3 mb-3">
+        @foreach (var (code, users) in balances)
+        {
+            <div class="col-12 col-lg-6">
+                <table class="table table-sm align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th scope="col">Member</th>
+                            <th scope="col" class="text-end" title="What they paid, payments included">Spent</th>
+                            <th scope="col" class="text-end" title="Their shares of the expenses, payments to them included">Received</th>
+                            <th scope="col" class="text-end">Balance</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var member in Snapshot.Members.Where(m => users.ContainsKey(m.UserId)))
+                        {
+                            // Received is derived so the rounded columns always add up.
+                            var balance = users[member.UserId];
+                            var paid = spent[code].GetValueOrDefault(member.UserId);
+                            <tr>
+                                <td>@member.UserName</td>
+                                <td class="text-end text-nowrap">@Money(paid, code)</td>
+                                <td class="text-end text-nowrap">@Money(paid - balance, code)</td>
+                                <td class="text-end text-nowrap @BalanceClass(balance)">@Money(balance, code)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+
+    <h2 class="h5">Suggested payments</h2>
+    @if (payments.Count == 0)
+    {
+        <p class="text-body-secondary">Everyone is settled.</p>
+    }
+    else
+    {
+        <ul class="list-group mb-3">
+            @foreach (var payment in payments)
+            {
+                <li class="list-group-item d-flex flex-wrap align-items-center gap-2">
+                    <span><strong>@Name(payment.PaidByUserId)</strong> pays <strong>@Name(payment.ParticipantUserIds[0])</strong> @Money(payment.Amount, payment.Currency)</span>
+                    @if (canEdit)
+                    {
+                        <button class="btn btn-sm btn-outline-success ms-auto" disabled="@Busy" title="Add this payment to the expenses" @onclick="() => RecordAsync(payment)">Record payment</button>
+                    }
+                </li>
+            }
+        </ul>
+    }
+}
+
+@code {
+    private bool isFormOpen;
+    private long? editingId;
+    private string description = string.Empty;
+    private decimal amount;
+    private string currency = Currencies.Default;
+    private Guid paidBy;
+    private DateOnly date;
+    private bool isPayment;
+    private HashSet<Guid> participants = [];
+    private string? formError;
+
+    /// <summary>
+    /// The arrangement.
+    /// </summary>
+    [Parameter, EditorRequired]
+    public ArrangementSnapshot Snapshot { get; set; } = null!;
+
+    /// <summary>
+    /// The viewer's user ID.
+    /// </summary>
+    [Parameter, EditorRequired]
+    public Guid UserId { get; set; }
+
+    /// <summary>
+    /// Whether a command is in progress.
+    /// </summary>
+    [Parameter]
+    public bool Busy { get; set; }
+
+    /// <summary>
+    /// Runs a command: the method, the path under the arrangement, and the body. Returns whether it succeeded.
+    /// </summary>
+    [Parameter, EditorRequired]
+    public Func<HttpMethod, string, object?, Task<bool>> Run { get; set; } = null!;
+
+    private static string Money(decimal value, string code)
+    {
+        return $"{value.ToString("N" + Currencies.Decimals(code), CultureInfo.CurrentCulture)} {code}";
+    }
+
+    private static string? BalanceClass(decimal balance)
+    {
+        return Math.Sign(balance) switch
+        {
+            < 0 => "text-danger",
+            > 0 => "text-success",
+            _ => null,
+        };
+    }
+
+    private DateOnly Today()
+    {
+        return DateOnly.FromDateTime(CurrentUser.ToLocalTime(DateTime.UtcNow));
+    }
+
+    private string Name(Guid userId)
+    {
+        return Snapshot.FindMember(userId)?.UserName ?? "?";
+    }
+
+    private string SharedBy(ExpenseSnapshot expense)
+    {
+        return expense.ParticipantUserIds.Count == Snapshot.Members.Count && !expense.IsSettlementPayment
+            ? "Everyone"
+            : string.Join(", ", expense.ParticipantUserIds.Select(Name));
+    }
+
+    private void Open(ExpenseSnapshot? expense)
+    {
+        // A new expense: the currency of the last one added if still available, paid by me, shared by everyone.
+        var available = Snapshot.AvailableCurrencies();
+        var last = Snapshot.Expenses.Where(e => available.Contains(e.Currency)).MaxBy(e => e.Id);
+        editingId = expense?.Id;
+        description = expense?.Description ?? string.Empty;
+        amount = expense?.Amount ?? 0;
+        currency = expense?.Currency ?? last?.Currency ?? Snapshot.BaseCurrency;
+        paidBy = expense?.PaidByUserId ?? UserId;
+        date = expense?.Date ?? Today();
+        isPayment = expense?.IsSettlementPayment ?? false;
+        participants = (expense?.ParticipantUserIds ?? Snapshot.Members.Select(m => m.UserId)).ToHashSet();
+        formError = null;
+        isFormOpen = true;
+    }
+
+    private void Toggle(Guid userId)
+    {
+        if (!participants.Remove(userId))
+        {
+            participants.Add(userId);
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        var ids = Snapshot.Members.Select(m => m.UserId).Where(participants.Contains).ToList();
+        var request = new ExpenseRequest(description.Trim(), amount, currency, paidBy, ids, date, isPayment);
+        formError = ExpenseRules.Validate(request);
+        if (formError == null && await Run(editingId == null ? HttpMethod.Post : HttpMethod.Put, editingId == null ? "expenses" : $"expenses/{editingId}", request))
+        {
+            isFormOpen = false;
+        }
+    }
+
+    private async Task DeleteAsync(ExpenseSnapshot expense)
+    {
+        if (await JS.InvokeAsync<bool>("confirm", $"Delete \"{expense.Description}\"?"))
+        {
+            await Run(HttpMethod.Delete, $"expenses/{expense.Id}", null);
+        }
+    }
+
+    private Task<bool> RecordAsync(ExpenseRequest payment)
+    {
+        return Run(HttpMethod.Post, "expenses", payment with { Description = $"Payment to {Name(payment.ParticipantUserIds[0])}" });
+    }
+}

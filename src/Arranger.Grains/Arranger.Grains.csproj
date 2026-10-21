@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Arranger.Data\Arranger.Data.csproj" />
+    <ProjectReference Include="..\Arranger.Grains.Abstractions\Arranger.Grains.Abstractions.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Orleans.Sdk" />
+  </ItemGroup>
+
+</Project>

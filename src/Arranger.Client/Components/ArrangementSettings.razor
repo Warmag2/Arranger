@@ -1,0 +1,225 @@
+@inject ArrangerApi Api
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+
+@{
+    var me = Snapshot.FindMember(UserId);
+    var isOwner = me != null && Snapshot.OwnerUserId == UserId;
+    var isAdmin = me?.IsAdmin == true;
+    var link = Navigation.ToAbsoluteUri(Snapshot.Id.ToString()).ToString();
+}
+
+<section class="mb-4">
+    <h2 class="h5">Link</h2>
+    <div class="input-group share">
+        <input class="form-control" readonly value="@link" aria-label="Link to this arrangement" />
+        <button class="btn btn-outline-secondary" @onclick="() => CopyAsync(link)">@(copied ? "Copied" : "Copy")</button>
+    </div>
+    @if (copyFailed)
+    {
+        <div class="form-text">Copying is not available here. Copy the link from the box instead.</div>
+    }
+</section>
+
+<section class="mb-4">
+    <h2 class="h5">Members (@Snapshot.Members.Count)</h2>
+    <ul class="list-group">
+        @foreach (var member in Snapshot.Members)
+        {
+            <li class="list-group-item d-flex align-items-center gap-2">
+                <UserAvatar UserId="member.UserId" />
+                <span>@member.UserName</span>
+                @if (member.UserId == Snapshot.OwnerUserId)
+                {
+                    <span class="badge bg-primary">Owner</span>
+                }
+                else if (member.IsAdmin)
+                {
+                    <span class="badge bg-secondary">Admin</span>
+                }
+                @if (isOwner && member.UserId != Snapshot.OwnerUserId)
+                {
+                    <button class="btn btn-sm btn-outline-secondary ms-auto" disabled="@Busy" @onclick="() => SetAdminAsync(member.UserId, !member.IsAdmin)">
+                        @(member.IsAdmin ? "Remove admin" : "Make admin")
+                    </button>
+                }
+            </li>
+        }
+    </ul>
+</section>
+
+<CurrencySettings Snapshot="Snapshot" UserId="UserId" Busy="Busy" Run="Run" />
+
+@if (isAdmin)
+{
+    <section class="mb-4">
+        <h2 class="h5">Administration</h2>
+        <div @key="attempts">
+            <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" role="switch" id="participation" checked="@(!Snapshot.IsParticipationClosed)" disabled="@Busy"
+                       @onchange="e => SetParticipationAsync((bool)e.Value!)" />
+                <label class="form-check-label" for="participation">Open for new members</label>
+            </div>
+            <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" role="switch" id="schedule-enabled" checked="@(!Snapshot.IsScheduleDisabled)" disabled="@Busy"
+                       @onchange="e => SetTabsAsync((bool)e.Value!, !Snapshot.IsExpensesDisabled)" />
+                <label class="form-check-label" for="schedule-enabled">Schedule enabled</label>
+            </div>
+            <div class="form-check form-switch mb-3">
+                <input class="form-check-input" type="checkbox" role="switch" id="expenses-enabled" checked="@(!Snapshot.IsExpensesDisabled)" disabled="@Busy"
+                       @onchange="e => SetTabsAsync(!Snapshot.IsScheduleDisabled, (bool)e.Value!)" />
+                <label class="form-check-label" for="expenses-enabled">Expenses enabled</label>
+            </div>
+        </div>
+        <div class="form-text mb-3">A disabled tab stays visible but cannot be changed. Disabling the schedule closes the poll and confirms the picked time.</div>
+        <form @onsubmit="UpdateDetailsAsync">
+            <div class="mb-2">
+                <input class="form-control" placeholder="Title" maxlength="@ArrangementRules.TitleMaxLength" @bind="title" />
+            </div>
+            <div class="mb-2">
+                <textarea class="form-control" rows="3" placeholder="Description" maxlength="@ArrangementRules.DescriptionMaxLength" @bind="description"></textarea>
+            </div>
+            @if (detailsError != null)
+            {
+                <div class="text-danger mb-2">@detailsError</div>
+            }
+            <button type="submit" class="btn btn-primary" disabled="@Busy">Save details</button>
+        </form>
+    </section>
+}
+
+@if (isOwner)
+{
+    <section class="mb-4">
+        <button class="btn btn-outline-danger" disabled="@(Busy || deleting)" @onclick="DeleteAsync">Delete arrangement</button>
+        @if (deleteError != null)
+        {
+            <div class="text-danger mt-2">@deleteError</div>
+        }
+    </section>
+}
+else if (me != null)
+{
+    <section class="mb-4">
+        <button class="btn btn-outline-danger" disabled="@Busy" @onclick="LeaveAsync">Leave arrangement</button>
+        <div class="form-text">You can leave unless you paid or share an expense. Votes will be removed.</div>
+    </section>
+}
+
+@code {
+    private string title = string.Empty;
+    private string description = string.Empty;
+    private string? shownTitle;
+    private string? shownDescription;
+    private string? detailsError;
+    private string? deleteError;
+    private bool deleting;
+    private bool copied;
+    private bool copyFailed;
+    private int attempts;
+
+    /// <summary>
+    /// The arrangement.
+    /// </summary>
+    [Parameter, EditorRequired]
+    public ArrangementSnapshot Snapshot { get; set; } = null!;
+
+    /// <summary>
+    /// The viewer's user ID.
+    /// </summary>
+    [Parameter, EditorRequired]
+    public Guid UserId { get; set; }
+
+    /// <summary>
+    /// Whether a command is in progress.
+    /// </summary>
+    [Parameter]
+    public bool Busy { get; set; }
+
+    /// <summary>
+    /// Runs a command: the method, the path under the arrangement or <b>null</b> for the arrangement itself, and the body.
+    /// </summary>
+    [Parameter, EditorRequired]
+    public Func<HttpMethod, string?, object?, Task<bool>> Run { get; set; } = null!;
+
+    /// <inheritdoc />
+    protected override void OnParametersSet()
+    {
+        // Keep what the user is typing unless someone actually changed the details.
+        if (Snapshot.Title != shownTitle || Snapshot.Description != shownDescription)
+        {
+            title = shownTitle = Snapshot.Title;
+            description = shownDescription = Snapshot.Description;
+        }
+    }
+
+    private async Task SetParticipationAsync(bool isOpen)
+    {
+        await Run(HttpMethod.Put, "participation", new SetParticipationRequest(isOpen));
+        Redraw();
+    }
+
+    private async Task SetTabsAsync(bool isScheduleEnabled, bool isExpensesEnabled)
+    {
+        await Run(HttpMethod.Put, "tabs", new SetTabsRequest(isScheduleEnabled, isExpensesEnabled));
+        Redraw();
+    }
+
+    private async Task LeaveAsync()
+    {
+        if (await JS.InvokeAsync<bool>("confirm", $"Leave \"{Snapshot.Title}\"?") && await Run(HttpMethod.Post, "leave", null))
+        {
+            Navigation.NavigateTo(string.Empty);
+        }
+    }
+
+    private void Redraw()
+    {
+        // Redraw the switches from the snapshot, also when the change was refused or made no difference.
+        attempts++;
+    }
+
+    private Task SetAdminAsync(Guid memberUserId, bool isAdmin)
+    {
+        return Run(HttpMethod.Put, $"members/{memberUserId}/admin", new SetAdminRequest(isAdmin));
+    }
+
+    private async Task UpdateDetailsAsync()
+    {
+        detailsError = ArrangementRules.ValidateDetails(ArrangementRules.NormalizeText(title), ArrangementRules.NormalizeText(description));
+        if (detailsError == null)
+        {
+            await Run(HttpMethod.Put, null, new UpdateArrangementDetailsRequest(title, description));
+        }
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", $"Delete \"{Snapshot.Title}\" and everything in it? This cannot be undone."))
+        {
+            return;
+        }
+
+        deleting = true;
+        deleteError = await Api.SendAsync(HttpMethod.Delete, $"api/arrangements/{Snapshot.Id}");
+        deleting = false;
+        if (deleteError == null)
+        {
+            Navigation.NavigateTo(string.Empty);
+        }
+    }
+
+    private async Task CopyAsync(string link)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", link);
+            copied = true;
+        }
+        catch (JSException)
+        {
+            // The clipboard API needs HTTPS or localhost.
+            copyFailed = true;
+        }
+    }
+}
