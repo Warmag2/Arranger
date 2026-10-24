@@ -5,10 +5,10 @@ using System.Threading.Tasks;
 using Faemiyah.Arranger.Data.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
-using RepositoryPrototype.Entities;
-using RepositoryPrototype.Interfaces;
-using RepositoryPrototype.Models;
-using RepositoryPrototype.Repositories;
+using Faemiyah.Repository.Entities;
+using Faemiyah.Repository.Interfaces;
+using Faemiyah.Repository.Models;
+using Faemiyah.Repository.Repositories;
 
 namespace Faemiyah.Arranger.Data.Repositories;
 

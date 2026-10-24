@@ -36,6 +36,7 @@ public static class ArrangementEndpoints
         group.MapPost("/{id:guid}/join", JoinAsync);
         group.MapPost("/{id:guid}/leave", LeaveAsync);
         group.MapPut("/{id:guid}/participation", SetParticipationAsync);
+        group.MapPut("/{id:guid}/new-times", SetAllowNewTimesAsync);
         group.MapPut("/{id:guid}/tabs", SetTabsAsync);
         group.MapPut("/{id:guid}/members/{memberId:guid}/admin", SetAdminAsync);
         group.MapPost("/{id:guid}/time-options", AddTimeOptionAsync);
@@ -92,6 +93,11 @@ public static class ArrangementEndpoints
     private static async Task<IResult> SetParticipationAsync(Guid id, SetParticipationRequest request, ClaimsPrincipal user, IGrainFactory grains)
     {
         return (await Grain(grains, id).SetParticipationOpenAsync(user.GetRequiredUserId(), request.IsOpen)).ToHttpResult();
+    }
+
+    private static async Task<IResult> SetAllowNewTimesAsync(Guid id, SetAllowNewTimesRequest request, ClaimsPrincipal user, IGrainFactory grains)
+    {
+        return (await Grain(grains, id).SetAllowNewTimesAsync(user.GetRequiredUserId(), request.IsOpen)).ToHttpResult();
     }
 
     private static async Task<IResult> SetTabsAsync(Guid id, SetTabsRequest request, ClaimsPrincipal user, IGrainFactory grains)

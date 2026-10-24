@@ -7,27 +7,29 @@
 
 <h1>New arrangement</h1>
 
-<form class="new" @onsubmit="CreateAsync">
-    <div class="mb-2">
-        <input class="form-control" placeholder="Title" maxlength="@ArrangementRules.TitleMaxLength" @bind="title" />
+<form class="arranger form-new" @onsubmit="CreateAsync">
+    <div class="form form-text">
+        <input class="input-text" placeholder="Title" maxlength="@ArrangementRules.TitleMaxLength" @bind="title" />
     </div>
-    <div class="mb-3">
-        <textarea class="form-control" rows="3" placeholder="Description (optional)" maxlength="@ArrangementRules.DescriptionMaxLength" @bind="description"></textarea>
+    <div class="form form-text">
+        <textarea class="input-text" rows="3" placeholder="Description (optional)" maxlength="@ArrangementRules.DescriptionMaxLength" @bind="description"></textarea>
     </div>
-    <div class="form-check form-switch">
-        <input class="form-check-input" type="checkbox" role="switch" id="schedule-enabled" @bind="isScheduleEnabled" />
-        <label class="form-check-label" for="schedule-enabled">Schedule: find a time together</label>
+    <div class="form form-switch">
+        <input class="input-checkbox" type="checkbox" role="switch" id="schedule-enabled" @bind="isScheduleEnabled" />
+        <label class="label-checkbox" for="schedule-enabled">Schedule: find a time together</label>
     </div>
-    <div class="form-check form-switch mb-3">
-        <input class="form-check-input" type="checkbox" role="switch" id="expenses-enabled" @bind="isExpensesEnabled" />
-        <label class="form-check-label" for="expenses-enabled">Expenses: share costs</label>
+    <div class="form form-switch">
+        <input class="input-checkbox" type="checkbox" role="switch" id="expenses-enabled" @bind="isExpensesEnabled" />
+        <label class="label-checkbox" for="expenses-enabled">Expenses: share costs</label>
     </div>
     @if (error != null)
     {
-        <div class="alert alert-danger">@error</div>
+        <div class="error ">@error</div>
     }
-    <button type="submit" class="btn btn-primary" disabled="@busy">Create</button>
-    <a class="btn btn-outline-secondary" href="">Cancel</a>
+    <div class="form form-submit">
+        <button type="submit" class="button button-submit" disabled="@busy">Create</button>
+        <a class="button button-cancel" href="">Cancel</a>
+    </div>
 </form>
 
 @code {

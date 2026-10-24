@@ -18,8 +18,8 @@ using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Net.Http.Headers;
 using Orleans;
-using RepositoryPrototype.Interfaces;
-using RepositoryPrototype.Models;
+using Faemiyah.Repository.Interfaces;
+using Faemiyah.Repository.Models;
 
 namespace Faemiyah.Arranger.Server.Endpoints;
 

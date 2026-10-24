@@ -5,6 +5,7 @@
     var me = Snapshot.FindMember(UserId);
     var isAdmin = me?.IsAdmin == true;
     var canEdit = me != null && !Snapshot.IsScheduleDisabled;
+    var canAddTime = canEdit && (isAdmin || Snapshot.AllowNewTimes);
     var final = Snapshot.TimeOptions.FirstOrDefault(o => o.Id == Snapshot.FinalTimeOptionId);
 }
 
@@ -130,11 +131,11 @@ else
     </div>
 }
 
-@if (canEdit && !adding)
+@if (canAddTime && !adding)
 {
     <button class="btn btn-outline-primary" @onclick="() => adding = true">Add time</button>
 }
-else if (canEdit)
+else if (canAddTime)
 {
     <form class="row g-2 align-items-end mb-2" @onsubmit="AddAsync">
         <div class="col-auto">

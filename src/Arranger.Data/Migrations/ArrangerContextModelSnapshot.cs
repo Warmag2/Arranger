@@ -30,6 +30,12 @@ namespace Faemiyah.Arranger.Data.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
 
+                    b.Property<bool>("AllowNewTimes")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("AllowNewUsers")
+                        .HasColumnType("boolean");
+
                     b.Property<string>("BaseCurrency")
                         .IsRequired()
                         .HasMaxLength(3)
@@ -53,9 +59,6 @@ namespace Faemiyah.Arranger.Data.Migrations
                         .HasColumnType("bigint");
 
                     b.Property<bool>("IsExpensesDisabled")
-                        .HasColumnType("boolean");
-
-                    b.Property<bool>("IsParticipationClosed")
                         .HasColumnType("boolean");
 
                     b.Property<bool>("IsScheduleDisabled")

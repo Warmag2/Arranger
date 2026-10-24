@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
-using RepositoryPrototype.Entities;
+using Faemiyah.Repository.Entities;
 
 namespace Faemiyah.Arranger.Data.Entities;
 
@@ -53,11 +53,6 @@ public class Arrangement : EntityBaseWithUuid<long>
     public DateTime CreatedAt { get; set; }
 
     /// <summary>
-    /// Whether new members are no longer accepted.
-    /// </summary>
-    public bool IsParticipationClosed { get; set; }
-
-    /// <summary>
     /// The ISO 4217 currency balances are settled in.
     /// </summary>
     [Required]
@@ -70,14 +65,24 @@ public class Arrangement : EntityBaseWithUuid<long>
     public long? FinalTimeOptionId { get; set; }
 
     /// <summary>
-    /// Whether the schedule tab is disabled, i.e. read-only, which closes the poll.
+    /// Whether new members can join.
     /// </summary>
-    public bool IsScheduleDisabled { get; set; }
+    public bool AllowNewUsers { get; set; }
+
+    /// <summary>
+    /// Whether new times are accepted from non-admin users.
+    /// </summary>
+    public bool AllowNewTimes { get; set; }
 
     /// <summary>
     /// Whether the expenses tab is disabled, i.e. read-only.
     /// </summary>
     public bool IsExpensesDisabled { get; set; }
+
+    /// <summary>
+    /// Whether the schedule tab is disabled, i.e. read-only, which closes the poll.
+    /// </summary>
+    public bool IsScheduleDisabled { get; set; }
 
     /// <summary>
     /// The members, including the owner.

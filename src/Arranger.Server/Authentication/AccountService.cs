@@ -8,8 +8,8 @@ using Faemiyah.Arranger.Data.Entities;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Logging;
-using RepositoryPrototype.Interfaces;
-using RepositoryPrototype.Models;
+using Faemiyah.Repository.Interfaces;
+using Faemiyah.Repository.Models;
 
 namespace Faemiyah.Arranger.Server.Authentication;
 

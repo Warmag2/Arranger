@@ -14,7 +14,7 @@ using Microsoft.Extensions.DependencyInjection;
 using NUnit.Framework;
 using Orleans;
 using Orleans.TestingHost;
-using RepositoryPrototype.Interfaces;
+using Faemiyah.Repository.Interfaces;
 
 namespace Faemiyah.Arranger.IntegrationTests;
 
@@ -132,7 +132,7 @@ public class ArrangementGrainTests
         (await grain.JoinAsync(early)).Snapshot!.Members.Should().HaveCount(2);
         (await grain.JoinAsync(early)).Snapshot!.Members.Should().HaveCount(2);
         (await grain.SetParticipationOpenAsync(early, false)).Error.Should().Be(CommandError.Forbidden);
-        (await grain.SetParticipationOpenAsync(owner, false)).Snapshot!.IsParticipationClosed.Should().BeTrue();
+        (await grain.SetParticipationOpenAsync(owner, false)).Snapshot!.AllowNewUsers.Should().BeFalse();
 
         var refused = await grain.JoinAsync(late);
 
@@ -251,6 +251,28 @@ public class ArrangementGrainTests
         (await grain.AddTimeOptionAsync(owner, new AddTimeOptionRequest(Evening.AddHours(1), null, true))).Error.Should().Be(CommandError.Invalid);
         (await grain.AddTimeOptionAsync(outsider, Timed(20))).Error.Should().Be(CommandError.NotMember);
         (await grain.AddTimeOptionAsync(owner, new AddTimeOptionRequest(Evening, null, true))).Snapshot!.TimeOptions.Should().HaveCount(2);
+    }
+
+    [Test]
+    public async Task TimeOptions_RequireAdminWhenNewTimesClosed()
+    {
+        var owner = await AddUserAsync("Owner");
+        var member = await AddUserAsync("Member");
+        var grain = await CreateAsync(owner);
+        await grain.JoinAsync(member);
+
+        var open = (await grain.GetSnapshotAsync(owner)).Snapshot!;
+        open.AllowNewTimes.Should().BeTrue();
+        (await grain.AddTimeOptionAsync(member, Timed(18))).IsSuccess.Should().BeTrue();
+
+        (await grain.SetAllowNewTimesAsync(member, false)).Error.Should().Be(CommandError.Forbidden);
+        (await grain.SetAllowNewTimesAsync(owner, false)).Snapshot!.AllowNewTimes.Should().BeFalse();
+
+        (await grain.AddTimeOptionAsync(member, Timed(20))).Error.Should().Be(CommandError.Forbidden);
+        (await grain.AddTimeOptionAsync(owner, Timed(20))).Snapshot!.TimeOptions.Should().HaveCount(2);
+
+        (await grain.SetAllowNewTimesAsync(owner, true)).Snapshot!.AllowNewTimes.Should().BeTrue();
+        (await grain.AddTimeOptionAsync(member, Timed(22))).IsSuccess.Should().BeTrue();
     }
 
     [Test]

@@ -10,8 +10,8 @@ using Faemiyah.Arranger.Data.Repositories;
 using Faemiyah.Arranger.Grains.Abstractions;
 using Microsoft.Extensions.Logging;
 using Orleans;
-using RepositoryPrototype.Interfaces;
-using RepositoryPrototype.Models;
+using Faemiyah.Repository.Interfaces;
+using Faemiyah.Repository.Models;
 
 namespace Faemiyah.Arranger.Grains;
 
@@ -118,6 +118,8 @@ public sealed class ArrangementGrain : Grain, IArrangementGrain
             OwnerUserId = creator.Id,
             CreatedAt = now,
             BaseCurrency = creator.DefaultCurrency,
+            AllowNewUsers = true,
+            AllowNewTimes = true,
             IsScheduleDisabled = !request.IsScheduleEnabled,
             IsExpensesDisabled = !request.IsExpensesEnabled,
             Members = [new ArrangementMember { UserId = creator.Id, JoinedAt = now, IsAdmin = true }],
@@ -154,7 +156,7 @@ public sealed class ArrangementGrain : Grain, IArrangementGrain
             return _state.Current();
         }
 
-        if (arrangement.IsParticipationClosed)
+        if (!arrangement.AllowNewUsers)
         {
             return CommandResult.Failure(CommandError.Forbidden, "Participation is closed.");
         }
@@ -219,13 +221,31 @@ public sealed class ArrangementGrain : Grain, IArrangementGrain
             return denied;
         }
 
-        if (_state.Arrangement.IsParticipationClosed != isOpen)
+        if (_state.Arrangement.AllowNewUsers == isOpen)
         {
             return _state.Current();
         }
 
         var update = _state.Arrangement.CloneDetails();
-        update.IsParticipationClosed = !isOpen;
+        update.AllowNewUsers = isOpen;
+        return await SaveArrangementAsync(update);
+    }
+
+    /// <inheritdoc />
+    public async Task<CommandResult> SetAllowNewTimesAsync(Guid userId, bool isAllowed)
+    {
+        if (_state.CheckAdmin(userId) is { } denied)
+        {
+            return denied;
+        }
+
+        if (_state.Arrangement.AllowNewTimes == isAllowed)
+        {
+            return _state.Current();
+        }
+
+        var update = _state.Arrangement.CloneDetails();
+        update.AllowNewTimes = isAllowed;
         return await SaveArrangementAsync(update);
     }
 
@@ -355,6 +375,11 @@ public sealed class ArrangementGrain : Grain, IArrangementGrain
         if (_state.CheckScheduleEnabled(userId) is { } denied)
         {
             return denied;
+        }
+
+        if (!_state.Arrangement.AllowNewTimes && !_state.FindMember(userId)!.IsAdmin)
+        {
+            return CommandResult.Failure(CommandError.Forbidden, "Only admins can add new times.");
         }
 
         var begin = ArrangementRules.TruncateToMinute(request.DateBegin);

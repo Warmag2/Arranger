@@ -32,14 +32,8 @@
             <input id="expense-amount" class="form-control" type="number" min="0" step="any" @bind="amount" />
         </div>
         <div class="col-6 col-md-3">
-            <label class="form-label" for="expense-currency">Currency</label>
-            <select id="expense-currency" class="form-select" @bind="currency">
-                @* An edited expense or a suggested payment may use a currency that is not listed. *@
-                @foreach (var option in Snapshot.AvailableCurrencies().Append(currency).Distinct())
-                {
-                    <option value="@option">@option · @Currencies.Name(option)</option>
-                }
-            </select>
+            <label class="form-label">Currency</label>
+            <FormComboBox TItem="string" Options="@CurrencyOptions()" SelectedOption="@currency" OnChanged="@(code => currency = code)" EnableErrorDisplay="true" />
         </div>
         <div class="col-6 col-md-3">
             <label class="form-label" for="expense-payer">Paid by</label>
@@ -256,6 +250,18 @@ else
         return expense.ParticipantUserIds.Count == Snapshot.Members.Count && !expense.IsSettlementPayment
             ? "Everyone"
             : string.Join(", ", expense.ParticipantUserIds.Select(Name));
+    }
+
+    private SortedDictionary<string, string> CurrencyOptions()
+    {
+        // An edited expense or a suggested payment may use a currency that is not listed; keep the current one selectable.
+        var options = new SortedDictionary<string, string>(StringComparer.Ordinal);
+        foreach (var code in Snapshot.AvailableCurrencies().Append(currency).Distinct())
+        {
+            options[$"{code} · {Currencies.Name(code)}"] = code;
+        }
+
+        return options;
     }
 
     private void Open(ExpenseSnapshot? expense)
