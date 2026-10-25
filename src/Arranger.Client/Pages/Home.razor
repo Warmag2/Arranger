@@ -27,27 +27,42 @@
     }
     else
     {
-        <ul class="list-group">
-            @foreach (var arrangement in arrangements)
-            {
-                <li class="list-item" href="@arrangement.Id">
-                    <span>
-                        @arrangement.Title
-                        @if (arrangement.IsOwner)
-                        {
-                            <span class="badge badge-owner">Owner</span>
-                        }
-                        else if (arrangement.IsAdmin)
-                        {
-                            <span class="badge badge-admin">Admin</span>
-                        }
-                    </span>
-                    <p class="secondary">
-                        @arrangement.MemberCount members · @CurrentUser.ToLocalTime(arrangement.CreatedAt).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
-                    </p>
-                </li>
-            }
-        </ul>
+        <div class="scroll">
+            <table>
+                <thead>
+                    <tr>
+                        <th scope="col">Arrangement</th>
+                        <th scope="col">Role</th>
+                        <th scope="col" class="number">Members</th>
+                        <th scope="col">Created</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var arrangement in arrangements)
+                    {
+                        <tr>
+                            <td><a href="@arrangement.Id">@arrangement.Title</a></td>
+                            <td>
+                                @if (arrangement.IsOwner)
+                                {
+                                    <span class="badge badge-owner">Owner</span>
+                                }
+                                else if (arrangement.IsAdmin)
+                                {
+                                    <span class="badge badge-admin">Admin</span>
+                                }
+                                else
+                                {
+                                    <span class="badge badge-member">Member</span>
+                                }
+                            </td>
+                            <td class="number">@arrangement.MemberCount</td>
+                            <td>@CurrentUser.ToLocalTime(arrangement.CreatedAt).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
     }
 </section>
 

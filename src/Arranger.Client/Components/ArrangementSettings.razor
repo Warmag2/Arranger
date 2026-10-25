@@ -19,7 +19,7 @@
     </div>
     @if (copyFailed)
     {
-        <div class="form form-text">Copying is not available here. Copy the link from the box instead.</div>
+        <div class="form">Copying is not available here. Copy the link from the box instead.</div>
     }
 </section>
 
@@ -27,29 +27,52 @@
     <h2>
         Members (@Snapshot.Members.Count)
     </h2>
-    <ul class="list-group">
-        @foreach (var member in Snapshot.Members)
-        {
-            <li class="list-item">
-                <UserAvatar UserId="member.UserId" />
-                <span>@member.UserName</span>
-                @if (member.UserId == Snapshot.OwnerUserId)
+    <div class="scroll">
+        <table>
+            <thead>
+                <tr>
+                    <th scope="col">Member</th>
+                    <th scope="col">Role</th>
+                    @if (isOwner)
+                    {
+                        <th scope="col"></th>
+                    }
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var member in Snapshot.Members)
                 {
-                    <span class="badge badge-owner">Owner</span>
+                    <tr>
+                        <td>
+                            <UserAvatar UserId="member.UserId" />
+                            <span>@member.UserName</span>
+                        </td>
+                        <td>
+                            @if (member.UserId == Snapshot.OwnerUserId)
+                            {
+                                <span class="badge badge-owner">Owner</span>
+                            }
+                            else if (member.IsAdmin)
+                            {
+                                <span class="badge badge-admin">Admin</span>
+                            }
+                        </td>
+                        @if (isOwner)
+                        {
+                            <td>
+                                @if (member.UserId != Snapshot.OwnerUserId)
+                                {
+                                    <button class="button button-submit" disabled="@Busy" @onclick="() => SetAdminAsync(member.UserId, !member.IsAdmin)">
+                                        @(member.IsAdmin ? "Remove admin" : "Make admin")
+                                    </button>
+                                }
+                            </td>
+                        }
+                    </tr>
                 }
-                else if (member.IsAdmin)
-                {
-                    <span class="badge badge-admin">Admin</span>
-                }
-                @if (isOwner && member.UserId != Snapshot.OwnerUserId)
-                {
-                    <button class="button button-submit" disabled="@Busy" @onclick="() => SetAdminAsync(member.UserId, !member.IsAdmin)">
-                        @(member.IsAdmin ? "Remove admin" : "Make admin")
-                    </button>
-                }
-            </li>
-        }
-    </ul>
+            </tbody>
+        </table>
+    </div>
 </section>
 
 <CurrencySettings Snapshot="Snapshot" UserId="UserId" Busy="Busy" Run="Run" />
@@ -62,37 +85,37 @@
         </h2>
         <div @key="attempts">
             <div class="form form-switch">
-                <input class="form-check-input" type="checkbox" role="switch" id="new-times" checked="@(Snapshot.AllowNewTimes)" disabled="@Busy"
+                <input type="checkbox" id="new-times" checked="@(Snapshot.AllowNewTimes)" disabled="@Busy"
                        @onchange="e => SetNewTimesAsync((bool)e.Value!)" />
-                <label class="form-check-label" for="new-times">Open for new time suggestions</label>
+                <label for="new-times">Open for new time suggestions</label>
             </div>
             <div class="form form-switch">
-                <input class="form-check-input" type="checkbox" role="switch" id="participation" checked="@(Snapshot.AllowNewUsers)" disabled="@Busy"
+                <input type="checkbox" id="participation" checked="@(Snapshot.AllowNewUsers)" disabled="@Busy"
                        @onchange="e => SetParticipationAsync((bool)e.Value!)" />
-                <label class="form-check-label" for="participation">Open for new members</label>
+                <label for="participation">Open for new members</label>
             </div>
             <div class="form form-switch">
-                <input class="form-check-input" type="checkbox" role="switch" id="schedule-enabled" checked="@(!Snapshot.IsScheduleDisabled)" disabled="@Busy"
+                <input type="checkbox" id="schedule-enabled" checked="@(!Snapshot.IsScheduleDisabled)" disabled="@Busy"
                        @onchange="e => SetTabsAsync((bool)e.Value!, !Snapshot.IsExpensesDisabled)" />
-                <label class="form-check-label" for="schedule-enabled">Schedule enabled</label>
+                <label for="schedule-enabled">Schedule enabled</label>
             </div>
             <div class="form form-switch">
-                <input class="form-check-input" type="checkbox" role="switch" id="expenses-enabled" checked="@(!Snapshot.IsExpensesDisabled)" disabled="@Busy"
+                <input type="checkbox" id="expenses-enabled" checked="@(!Snapshot.IsExpensesDisabled)" disabled="@Busy"
                        @onchange="e => SetTabsAsync(!Snapshot.IsScheduleDisabled, (bool)e.Value!)" />
-                <label class="form-check-label" for="expenses-enabled">Expenses enabled</label>
+                <label for="expenses-enabled">Expenses enabled</label>
             </div>
         </div>
 
-        <div class="form form-text">
+        <div class="form">
             A disabled tab stays visible but cannot be changed. Disabling the schedule closes the poll and confirms the picked time.
         </div>
 
-        <form class="arranger form-edit" @onsubmit="UpdateDetailsAsync">
-            <div class="form form-text">
-                <input class="form-control" placeholder="Title" maxlength="@ArrangementRules.TitleMaxLength" @bind="title" />
+        <form @onsubmit="UpdateDetailsAsync">
+            <div class="form">
+                <input placeholder="Title" maxlength="@ArrangementRules.TitleMaxLength" @bind="title" />
             </div>
-            <div class="form form-text">
-                <textarea class="form-control" rows="3" placeholder="Description" maxlength="@ArrangementRules.DescriptionMaxLength" @bind="description"></textarea>
+            <div class="form">
+                <textarea rows="3" placeholder="Description" maxlength="@ArrangementRules.DescriptionMaxLength" @bind="description"></textarea>
             </div>
             @if (detailsError != null)
             {

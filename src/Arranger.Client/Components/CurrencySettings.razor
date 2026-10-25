@@ -19,7 +19,7 @@
     </h2>
     <div class="form form-select">
         <label class="label-text">Base currency</label>
-        <FormComboBox TItem="string" Options="@AllCurrencyOptions()" OnChanged="SetBaseCurrencyAsync" />
+        <FormComboBox TItem="string" Options="@Currencies.Options()" SelectedOption="@baseCurrency" OnChanged="SetBaseCurrencyAsync" />
     </div>
 
     @foreach (var currency in shown)
@@ -96,26 +96,11 @@
         return value is string text && !string.IsNullOrWhiteSpace(text) ? decimal.Parse(text, NumberStyles.Float, CultureInfo.InvariantCulture) : null;
     }
 
-    private static SortedDictionary<string, string> AllCurrencyOptions()
-    {
-        var options = new SortedDictionary<string, string>(StringComparer.Ordinal);
-        foreach (var option in Currencies.All)
-        {
-            options[$"{option.Code} · {option.Name}"] = option.Code;
-        }
-
-        return options;
-    }
-
     private static SortedDictionary<string, string> AddableCurrencyOptions(List<string> shown, string baseCurrency)
     {
-        var options = new SortedDictionary<string, string>(StringComparer.Ordinal);
-        foreach (var option in Currencies.All.Where(c => c.Code != baseCurrency && !shown.Contains(c.Code)))
-        {
-            options[$"{option.Code} · {option.Name}"] = option.Code;
-        }
-
-        return options;
+        return Currencies.Options(Currencies.All
+            .Where(c => c.Code != baseCurrency && !shown.Contains(c.Code))
+            .Select(c => c.Code));
     }
 
     private async Task AddAsync(string code)
@@ -142,6 +127,11 @@
 
     private async Task SetBaseCurrencyAsync(string currency)
     {
+        if (currency == Snapshot.BaseCurrency)
+        {
+            return;
+        }
+
         if (Snapshot.ExchangeRates.Count == 0 || await JS.InvokeAsync<bool>("confirm", $"Change the base currency to {currency}? The exchange rates are cleared, but the currencies stay."))
         {
             await Run(HttpMethod.Put, "base-currency", new SetBaseCurrencyRequest(currency));

@@ -7,11 +7,11 @@
 
 <h1>New arrangement</h1>
 
-<form class="arranger form-new" @onsubmit="CreateAsync">
-    <div class="form form-text">
+<form @onsubmit="CreateAsync">
+    <div class="form">
         <input class="input-text" placeholder="Title" maxlength="@ArrangementRules.TitleMaxLength" @bind="title" />
     </div>
-    <div class="form form-text">
+    <div class="form">
         <textarea class="input-text" rows="3" placeholder="Description (optional)" maxlength="@ArrangementRules.DescriptionMaxLength" @bind="description"></textarea>
     </div>
     <div class="form form-switch">
