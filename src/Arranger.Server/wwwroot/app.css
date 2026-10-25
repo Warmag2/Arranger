@@ -8,7 +8,7 @@
     --color_page_bg: #C0C0C0;
     --color_content_bg: #E8E8E8;
     --color_content_text: #000000;
-    --color_content_text_secondary: #202020;
+    --color_content_text_secondary: #303030;
     --color_navigation_bg: #283342;
     --color_navigation_bg_hover: #546372;
     --color_navigation_text: #E0E0E8;
@@ -99,10 +99,12 @@ p {
 }
 
 p.secondary {
+    font-size: 0.9rem;
     color: var(--color_content_text_secondary);
 }
 
 span.secondary {
+    font-size: 0.9rem;
     color: var(--color_content_text_secondary);
 }
 

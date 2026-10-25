@@ -107,11 +107,15 @@ else
                         <td>@expense.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</td>
                         @* Paid in another currency: that amount, then its value in the base currency. *@
                         <td class="number">
+                            @if (expense.Currency != baseCurrency)
+                            {
+                                <span class="secondary">
+                                    @(expense.Currency == baseCurrency ? null : Money(expense.Amount, expense.Currency))
+                                    &nbsp;
+                                </span>
+                            }
                             @(ExpenseMath.InBaseCurrency(expense.Amount, expense.Currency, baseCurrency, Snapshot.ExchangeRates) is { } inBase ? Money(inBase, baseCurrency) : $"? {baseCurrency}")
-                            <span class="secondary">
-                                (@(expense.Currency == baseCurrency ? null : Money(expense.Amount, expense.Currency)))
-                            </span>
-                            </td>
+                        </td>
                         <td>@Name(expense.PaidByUserId)</td>
                         <td>
                             @if (expense.ParticipantUserIds.Count == Snapshot.Members.Count && !expense.IsSettlementPayment)
