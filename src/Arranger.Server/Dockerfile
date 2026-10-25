@@ -4,7 +4,7 @@ RUN apk add --no-cache icu-libs
 ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false
 WORKDIR /app
 
-FROM faemiyahsdk:latest AS build
+FROM localhost/faemiyahsdk:latest AS build
 WORKDIR /build
 COPY ["src/", "src/"]
 WORKDIR "/build/src/Arranger.Server"
