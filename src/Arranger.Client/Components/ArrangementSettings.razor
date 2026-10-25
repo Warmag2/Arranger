@@ -87,7 +87,7 @@
             <div class="form form-switch">
                 <input type="checkbox" id="new-times" checked="@(Snapshot.AllowNewTimes)" disabled="@Busy"
                        @onchange="e => SetNewTimesAsync((bool)e.Value!)" />
-                <label for="new-times">Open for new time suggestions</label>
+                <label for="new-times">Allow regular users to add and remove times</label>
             </div>
             <div class="form form-switch">
                 <input type="checkbox" id="participation" checked="@(Snapshot.AllowNewUsers)" disabled="@Busy"

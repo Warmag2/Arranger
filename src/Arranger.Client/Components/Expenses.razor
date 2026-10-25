@@ -2,7 +2,9 @@
 @inject IJSRuntime JS
 
 @{
-    var canEdit = Snapshot.FindMember(UserId) != null && !Snapshot.IsExpensesDisabled;
+    var me = Snapshot.FindMember(UserId);
+    var isAdmin = me?.IsAdmin == true;
+    var canEdit = me != null && !Snapshot.IsExpensesDisabled;
     var baseCurrency = Snapshot.BaseCurrency;
     var missing = ExpenseMath.MissingRates(Snapshot.Expenses, baseCurrency, Snapshot.ExchangeRates);
     var isInBase = missing.Count == 0;
@@ -124,8 +126,11 @@ else
                         @if (canEdit)
                         {
                             <td class="number">
-                                <button class="button" disabled="@Busy" title="Edit" @onclick="() => Open(expense)">✎&#xFE0E;</button>
-                                <button class="button button-delete" disabled="@Busy" title="Delete" @onclick="() => DeleteAsync(expense)">×</button>
+                                @if (isAdmin || expense.PaidByUserId == UserId)
+                                {
+                                    <button class="button" disabled="@Busy" title="Edit" @onclick="() => Open(expense)">✎&#xFE0E;</button>
+                                    <button class="button button-delete" disabled="@Busy" title="Delete" @onclick="() => DeleteAsync(expense)">×</button>
+                                }
                             </td>
                         }
                     </tr>

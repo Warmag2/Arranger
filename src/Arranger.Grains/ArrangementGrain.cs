@@ -119,7 +119,7 @@ public sealed class ArrangementGrain : Grain, IArrangementGrain
             CreatedAt = now,
             BaseCurrency = creator.DefaultCurrency,
             AllowNewUsers = true,
-            AllowNewTimes = true,
+            AllowNewTimes = false,
             IsScheduleDisabled = !request.IsScheduleEnabled,
             IsExpensesDisabled = !request.IsExpensesEnabled,
             Members = [new ArrangementMember { UserId = creator.Id, JoinedAt = now, IsAdmin = true }],
@@ -427,6 +427,11 @@ public sealed class ArrangementGrain : Grain, IArrangementGrain
             return denied;
         }
 
+        if (!_state.Arrangement.AllowNewTimes && !_state.FindMember(userId)!.IsAdmin)
+        {
+            return CommandResult.Failure(CommandError.Forbidden, "Only admins can remove times.");
+        }
+
         if (_state.FindTimeOption(timeOptionId) == null)
         {
             return TimeOptionNotFound();
@@ -546,6 +551,11 @@ public sealed class ArrangementGrain : Grain, IArrangementGrain
             return ExpenseNotFound();
         }
 
+        if (existing.PaidByUserId != _state.FindMember(userId)!.UserId && !_state.FindMember(userId)!.IsAdmin)
+        {
+            return CommandResult.Failure(CommandError.Forbidden, "Only the member who paid or an admin can edit this expense.");
+        }
+
         // The copy carries the row version, so a write by a stale activation is refused.
         var expense = existing.CloneDetails();
         if (Fill(expense, request) is { } invalid)
@@ -571,9 +581,14 @@ public sealed class ArrangementGrain : Grain, IArrangementGrain
             return denied;
         }
 
-        if (_state.FindExpense(expenseId) == null)
+        if (_state.FindExpense(expenseId) is not { } existing)
         {
             return ExpenseNotFound();
+        }
+
+        if (existing.PaidByUserId != _state.FindMember(userId)!.UserId && !_state.FindMember(userId)!.IsAdmin)
+        {
+            return CommandResult.Failure(CommandError.Forbidden, "Only the member who paid or an admin can delete this expense.");
         }
 
         // The database cascades the delete to the participations.

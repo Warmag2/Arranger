@@ -261,18 +261,24 @@ public class ArrangementGrainTests
         var grain = await CreateAsync(owner);
         await grain.JoinAsync(member);
 
-        var open = (await grain.GetSnapshotAsync(owner)).Snapshot!;
-        open.AllowNewTimes.Should().BeTrue();
-        (await grain.AddTimeOptionAsync(member, Timed(18))).IsSuccess.Should().BeTrue();
+        var closed = (await grain.GetSnapshotAsync(owner)).Snapshot!;
+        closed.AllowNewTimes.Should().BeFalse();
 
-        (await grain.SetAllowNewTimesAsync(member, false)).Error.Should().Be(CommandError.Forbidden);
-        (await grain.SetAllowNewTimesAsync(owner, false)).Snapshot!.AllowNewTimes.Should().BeFalse();
+        // Closed by default: only admins can add times.
+        (await grain.AddTimeOptionAsync(member, Timed(18))).Error.Should().Be(CommandError.Forbidden);
+        (await grain.AddTimeOptionAsync(owner, Timed(18))).Snapshot!.TimeOptions.Should().HaveCount(1);
 
-        (await grain.AddTimeOptionAsync(member, Timed(20))).Error.Should().Be(CommandError.Forbidden);
-        (await grain.AddTimeOptionAsync(owner, Timed(20))).Snapshot!.TimeOptions.Should().HaveCount(2);
-
+        // A non-admin cannot open new times.
+        (await grain.SetAllowNewTimesAsync(member, true)).Error.Should().Be(CommandError.Forbidden);
         (await grain.SetAllowNewTimesAsync(owner, true)).Snapshot!.AllowNewTimes.Should().BeTrue();
-        (await grain.AddTimeOptionAsync(member, Timed(22))).IsSuccess.Should().BeTrue();
+
+        // Opened: members can add times too.
+        (await grain.AddTimeOptionAsync(member, Timed(20))).Snapshot!.TimeOptions.Should().HaveCount(2);
+
+        // Closing again locks members out while admins keep adding.
+        (await grain.SetAllowNewTimesAsync(owner, false)).Snapshot!.AllowNewTimes.Should().BeFalse();
+        (await grain.AddTimeOptionAsync(member, Timed(22))).Error.Should().Be(CommandError.Forbidden);
+        (await grain.AddTimeOptionAsync(owner, Timed(22))).Snapshot!.TimeOptions.Should().HaveCount(3);
     }
 
     [Test]
@@ -347,6 +353,7 @@ public class ArrangementGrainTests
         var member = await AddUserAsync("Member");
         var grain = await CreateAsync(owner);
         await grain.JoinAsync(member);
+        await grain.SetAllowNewTimesAsync(owner, true);
         var late = await AddOptionAsync(grain, owner, 20);
         var early = await AddOptionAsync(grain, member, 18);
         await grain.SetVoteAsync(member, late, VoteAnswer.No);
@@ -403,7 +410,7 @@ public class ArrangementGrainTests
         added.PaidByUserId.Should().Be(owner);
         added.ParticipantUserIds.Should().BeEquivalentTo([owner, member, third]);
 
-        var replaced = (await grain.UpdateExpenseAsync(third, added.Id, Dinner(member, member, third) with { Amount = 31.5m })).Snapshot!.Expenses.Single();
+        var replaced = (await grain.UpdateExpenseAsync(owner, added.Id, Dinner(member, member, third) with { Amount = 31.5m })).Snapshot!.Expenses.Single();
 
         replaced.Id.Should().Be(added.Id);
         replaced.Amount.Should().Be(31.5m);
@@ -458,6 +465,51 @@ public class ArrangementGrainTests
     }
 
     [Test]
+    public async Task Expenses_AreEditedOnlyByPayerOrAdmin()
+    {
+        var owner = await AddUserAsync("Owner");
+        var payer = await AddUserAsync("Payer");
+        var other = await AddUserAsync("Other");
+        var grain = await CreateAsync(owner);
+        await grain.JoinAsync(payer);
+        await grain.JoinAsync(other);
+        var id = (await grain.AddExpenseAsync(payer, Dinner(payer, payer, other))).Snapshot!.Expenses.Single().Id;
+
+        // A non-payer, non-admin member can neither edit nor delete it.
+        (await grain.UpdateExpenseAsync(other, id, Dinner(payer, payer, other) with { Amount = 12m })).Error.Should().Be(CommandError.Forbidden);
+        (await grain.DeleteExpenseAsync(other, id)).Error.Should().Be(CommandError.Forbidden);
+
+        // The member who paid can edit it.
+        (await grain.UpdateExpenseAsync(payer, id, Dinner(payer, payer, other) with { Amount = 12m })).Snapshot!.Expenses.Single().Amount.Should().Be(12m);
+
+        // An admin can edit and delete it even though they did not pay.
+        (await grain.UpdateExpenseAsync(owner, id, Dinner(payer, payer, other) with { Amount = 15m })).Snapshot!.Expenses.Single().Amount.Should().Be(15m);
+        (await grain.DeleteExpenseAsync(owner, id)).Snapshot!.Expenses.Should().BeEmpty();
+    }
+
+    [Test]
+    public async Task TimeOptions_AreRemovedByMembersOnlyWhenNewTimesOpen()
+    {
+        var owner = await AddUserAsync("Owner");
+        var member = await AddUserAsync("Member");
+        var grain = await CreateAsync(owner);
+        await grain.JoinAsync(member);
+        await grain.SetAllowNewTimesAsync(owner, true);
+        var open = await AddOptionAsync(grain, member, 18);
+        var other = await AddOptionAsync(grain, owner, 20);
+
+        (await grain.SetAllowNewTimesAsync(owner, false)).Snapshot!.AllowNewTimes.Should().BeFalse();
+
+        // With new times closed, a regular member cannot remove times, but an admin still can.
+        (await grain.RemoveTimeOptionAsync(member, open)).Error.Should().Be(CommandError.Forbidden);
+        (await grain.RemoveTimeOptionAsync(owner, open)).Snapshot!.TimeOptions.Should().ContainSingle();
+
+        // Reopening lets regular members remove times again.
+        (await grain.SetAllowNewTimesAsync(owner, true)).Snapshot!.AllowNewTimes.Should().BeTrue();
+        (await grain.RemoveTimeOptionAsync(member, other)).Snapshot!.TimeOptions.Should().BeEmpty();
+    }
+
+    [Test]
     public async Task ExchangeRates_AreSetRemovedAndClearedByBaseCurrency()
     {
         var owner = await AddUserAsync("Owner");
@@ -503,6 +555,7 @@ public class ArrangementGrainTests
         var grain = await CreateAsync(owner);
         await grain.JoinAsync(member);
         await grain.JoinAsync(payer);
+        await grain.SetAllowNewTimesAsync(owner, true);
         var option = await AddOptionAsync(grain, member, 18);
         await grain.SetVoteAsync(member, option, VoteAnswer.Yes);
         await grain.AddExpenseAsync(payer, Dinner(payer, payer, owner));
