@@ -102,6 +102,10 @@ p.secondary {
     color: var(--color_content_text_secondary);
 }
 
+span.secondary {
+    color: var(--color_content_text_secondary);
+}
+
 /*******************************************************************************
     Layout
 *******************************************************************************/
@@ -702,5 +706,10 @@ nav.navigation {
     nav.navigation {
         width: 100%;
         flex-direction: row;
+        flex-wrap: wrap;
+    }
+
+    div.navigation-item {
+        width: auto;
     }
 }

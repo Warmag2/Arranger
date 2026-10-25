@@ -90,10 +90,10 @@ else
             <thead>
                 <tr>
                     <th scope="col">Date</th>
-                    <th scope="col">Description</th>
-                    <th scope="col" class="number" colspan="2">Amount</th>
+                    <th scope="col" class="number">Amount</th>
                     <th scope="col">Paid by</th>
                     <th scope="col">For</th>
+                    <th scope="col">Description</th>
                     @if (canEdit)
                     {
                         <th scope="col"></th>
@@ -105,10 +105,13 @@ else
                 {
                     <tr class="@(expense.IsSettlementPayment ? "payment" : null)">
                         <td>@expense.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</td>
-                        <td>@expense.Description</td>
                         @* Paid in another currency: that amount, then its value in the base currency. *@
-                        <td class="number secondary">@(expense.Currency == baseCurrency ? null : Money(expense.Amount, expense.Currency))</td>
-                        <td class="number">@(ExpenseMath.InBaseCurrency(expense.Amount, expense.Currency, baseCurrency, Snapshot.ExchangeRates) is { } inBase ? Money(inBase, baseCurrency) : $"? {baseCurrency}")</td>
+                        <td class="number">
+                            @(ExpenseMath.InBaseCurrency(expense.Amount, expense.Currency, baseCurrency, Snapshot.ExchangeRates) is { } inBase ? Money(inBase, baseCurrency) : $"? {baseCurrency}")
+                            <span class="secondary">
+                                (@(expense.Currency == baseCurrency ? null : Money(expense.Amount, expense.Currency)))
+                            </span>
+                            </td>
                         <td>@Name(expense.PaidByUserId)</td>
                         <td>
                             @if (expense.ParticipantUserIds.Count == Snapshot.Members.Count && !expense.IsSettlementPayment)
@@ -123,6 +126,7 @@ else
                                 }
                             }
                         </td>
+                        <td>@expense.Description</td>
                         @if (canEdit)
                         {
                             <td class="number">
