@@ -111,7 +111,7 @@ else
                             {
                                 <span class="secondary">
                                     @(expense.Currency == baseCurrency ? null : Money(expense.Amount, expense.Currency))
-                                    &mdash;
+                                    &nbsp;
                                 </span>
                             }
                             @(ExpenseMath.InBaseCurrency(expense.Amount, expense.Currency, baseCurrency, Snapshot.ExchangeRates) is { } inBase ? Money(inBase, baseCurrency) : $"? {baseCurrency}")
