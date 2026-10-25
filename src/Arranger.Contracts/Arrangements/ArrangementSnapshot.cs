@@ -12,7 +12,8 @@ namespace Faemiyah.Arranger.Contracts.Arrangements;
 /// <param name="Description">The description, possibly empty.</param>
 /// <param name="OwnerUserId">The creator's user ID.</param>
 /// <param name="CreatedAt">The creation time in UTC.</param>
-/// <param name="IsParticipationClosed">Whether new members are no longer accepted.</param>
+/// <param name="AllowNewTimes">Whether new times can be proposed by non-admin users.</param>
+/// <param name="AllowNewUsers">Whether new members can join.</param>
 /// <param name="BaseCurrency">The ISO 4217 currency balances are settled in.</param>
 /// <param name="FinalTimeOptionId">The picked time option. Closing the schedule confirms it.</param>
 /// <param name="IsScheduleDisabled">Whether the schedule tab is disabled, i.e. read-only.</param>
@@ -28,7 +29,8 @@ public sealed record ArrangementSnapshot(
     string Description,
     Guid OwnerUserId,
     DateTime CreatedAt,
-    bool IsParticipationClosed,
+    bool AllowNewTimes,
+    bool AllowNewUsers,
     string BaseCurrency,
     long? FinalTimeOptionId,
     bool IsScheduleDisabled,

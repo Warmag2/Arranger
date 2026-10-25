@@ -11,7 +11,7 @@ both; an unused tab simply stays empty.
 | Frontend | Blazor WebAssembly (phone usability is the priority) |
 | Backend | One ASP.NET Core host: Orleans silo + REST API + SignalR hub + cookie auth + serves the WASM files |
 | Concurrency | One grain per arrangement. Orleans runs one call at a time per grain, so no locking code |
-| Persistence | PostgreSQL through EF Core and `Faemiyah.RepositoryPrototype`. No Orleans grain storage. The grain is the only writer and keeps the state in memory |
+| Persistence | PostgreSQL through EF Core and `Faemiyah.Repository`. No Orleans grain storage. The grain is the only writer and keeps the state in memory |
 | Atomicity | Each grain command ends in **one** commit: a single repository call, or one `DbContext` + one `SaveChangesAsync()` for the rare multi-row commands. No `TransactionScope` |
 | Realtime | SignalR hub, one group per arrangement. Grain pushes a full snapshot after each successful commit. Clients join the group, then fetch state; on reconnect they rejoin and refetch |
 | Authentication | Own `User` entity + `PasswordHasher<User>` + cookie authentication (no ASP.NET Identity stores), local username + password, no email. Site registration is open, with a configuration switch to close it |
@@ -57,26 +57,23 @@ dotnet new blazor -n Arranger -int WebAssembly -au Individual --all-interactive
 | Project | Contents | References |
 |---|---|---|
 | `Arranger.Server` | Host: cookie auth, API endpoints, hub, Orleans silo, forwarded headers, rate limiting | all below |
-| `Arranger.Client` | WASM UI, typed API client, hub client, state container | Contracts, Faemiyah.Ui (project reference) |
+| `Arranger.Client` | WASM UI, typed API client, hub client, state container | Contracts, Faemiyah.Ui (NuGet package) |
 | `Arranger.Contracts` | Plain request/response records, snapshot types, hub client interface, enums, currency list, shared rules and expense math (`ExpenseMath`: splits, balances, suggested payments). **No Orleans dependency** (it ships to the browser) | – |
 | `Arranger.Grains.Abstractions` | `IArrangementGrain`, command result types | Contracts |
 | `Arranger.Grains` | `ArrangementGrain`, notifier, validation | Abstractions, Data |
-| `Arranger.Data` | EF entities, `ArrangerContext` (incl. users), migrations, repositories | RepositoryPrototype (project reference) |
+| `Arranger.Data` | EF entities, `ArrangerContext` (incl. users), migrations, repositories | Faemiyah.Repository (NuGet package) |
 | `tests\Arranger.UnitTests` | Expense math, validation, client formatting | |
-| `tests\Arranger.IntegrationTests` | Grain + DB tests with Orleans `InProcessTestCluster` and Testcontainers PostgreSQL (`postgres:17-alpine`, as in RepositoryPrototype) | |
+| `tests\Arranger.IntegrationTests` | Grain + DB tests with Orleans `InProcessTestCluster` and Testcontainers PostgreSQL (`postgres:17-alpine`, as in Faemiyah.Repository) | |
 
 Notes:
 
 * Namespaces/assemblies `Faemiyah.Arranger.*`, matching the other Faemiyah projects.
-* During development RepositoryPrototype is a direct project reference
-  (`..\..\..\RepositoryPrototype\src\RepositoryPrototype\RepositoryPrototype.csproj` from `src\Arranger.Data`), also
-  listed in `Arranger.slnx` so it can be debugged and changed alongside. Switch to the `Faemiyah.RepositoryPrototype`
-  package once its API is stable.
-* Generic UI components come from `Faemiyah.Ui` (`C:\Work\src\Faemiyah.Ui`), referenced the same way
-  (`..\..\..\Faemiyah.Ui\src\Faemiyah.Ui\Faemiyah.Ui.csproj` from `src\Arranger.Client`) and also listed in
-  `Arranger.slnx`. Before using its inputs for realtime data, make them sync value parameters in `OnParametersSet`
+* Persistence comes from the `Faemiyah.Repository` NuGet package (the `Faemiyah.Repository.*` namespaces),
+  referenced from `src\Arranger.Data`.
+* Generic UI components come from the `Faemiyah.Ui` NuGet package, referenced from `src\Arranger.Client`.
+  Before using its inputs for realtime data, make them sync value parameters in `OnParametersSet`
   (most only read them in `OnInitialized`).
-* Tests use NUnit 5, AwesomeAssertions and bUnit for components, as in RepositoryPrototype and Faemiyah.Ui.
+* Tests use NUnit 5, AwesomeAssertions and bUnit for components, as in Faemiyah.Repository and Faemiyah.Ui.
 * Orleans 10.x (10.4.0 current), .NET 10, Npgsql EF Core 10.
 * Serialization is System.Text.Json everywhere, configured as in BtDamageResolver. Orleans serializes every
   `Faemiyah.Arranger*` type with it (`AddSerializer(s => s.AddJsonSerializer(isSupported: namespace prefix,
@@ -98,7 +95,7 @@ preserved, but uniqueness and login are case-insensitive via the computed `Norma
 | Entity | Fields | Constraints |
 |---|---|---|
 | `User` (`EntityBaseWithUuid<long>`) | `UserName` (3-32 chars of `A-Za-z0-9._-`), `NormalizedUserName` (computed, upper-case), `PasswordHash`, `SecurityStamp`, `CreatedAt`, `TimeZoneId` (IANA, initially from the browser at registration), `DefaultCurrency` (ISO 4217), `ProfilePicture?` (`bytea`), `ProfilePictureContentType?` | unique `NormalizedUserName` |
-| `Arrangement` (`EntityBaseWithUuid<long>`) | `UniqueId` (the link GUID), `Title`, `Description`, `OwnerUserId`, `CreatedAt`, `IsParticipationClosed`, `IsScheduleDisabled`, `IsExpensesDisabled`, `FinalTimeOptionId?` (the picked time; set null if the option is deleted), `BaseCurrency` (ISO 4217) | unique `UniqueId` |
+| `Arrangement` (`EntityBaseWithUuid<long>`) | `UniqueId` (the link GUID), `Title`, `Description`, `OwnerUserId`, `CreatedAt`, `AllowNewUsers`, `AllowNewTimes` (when off, only admins may add time options), `IsScheduleDisabled`, `IsExpensesDisabled`, `FinalTimeOptionId?` (the picked time; set null if the option is deleted), `BaseCurrency` (ISO 4217) | unique `UniqueId` |
 | `ArrangementMember` | `ArrangementId`, `UserId`, `JoinedAt`, `IsAdmin` (the owner is always an admin) | unique (`ArrangementId`, `UserId`) |
 | `TimeOption` (`TemporalEntityBase<long>`) | `ArrangementId`, `DateBegin` (required by the grain), `DateEnd?` (inherited, `timestamptz`, UTC, truncated to the minute), `IsWholeDay` (`DateBegin` is a UTC midnight naming the date, `DateEnd` is null), `CreatedByUserId` | cascade delete votes; duplicates refused by the grain; `DateBegin`/`DateEnd` indexes inherited |
 | `Vote` | `TimeOptionId`, `UserId`, `Answer` (Yes/Maybe/No, stored as text) | unique (`TimeOptionId`, `UserId`) |
@@ -119,14 +116,14 @@ preserved, but uniqueness and login are case-insensitive via the computed `Norma
   `/api/users/{id}/picture` with `Cache-Control: private, no-cache`, an `xmin` ETag and `nosniff`. A user without a
   picture gets a generated SVG initial with a hue derived from the user ID.
 * Balances and settlements are **computed**, never stored.
-* Users live in the same `ArrangerContext` and are accessed only through RepositoryPrototype repositories, like
+* Users live in the same `ArrangerContext` and are accessed only through Faemiyah.Repository repositories, like
   everything else; there is no separate `AddDbContext` registration.
 * Read-only projections (profiles, "my arrangements", pictures) go through small query classes in
   `Arranger.Data\Queries` that select only the needed columns.
 
 ### Repository results
 
-RepositoryPrototype write methods return `RepositoryResult<T>(OperationStatus Status, T? Value)` instead of null or
+Faemiyah.Repository write methods return `RepositoryResult<T>(OperationStatus Status, T? Value)` instead of null or
 exceptions. `OperationStatus` is `Found`, `Added`, `Updated`, `Deleted` (success, `Value` set) or `NotFound`,
 `Duplicate` (unique constraint), `Conflict` (`xmin` mismatch or removed meanwhile). The repository catches
 concurrency and unique violations itself and clears the change tracker on a failed save. Programming errors (an
@@ -330,14 +327,16 @@ a 401 sends the user to the login page. The page shows "Reconnecting…" while n
   pages under `/Account/*`.
   Unauthenticated access to `/{guid}` redirects to login with `ReturnUrl`.
 * Arrangement page: header (title, description, Join button for non-members), tabs **Schedule**, **Expenses** and
-  **⚙** (each tab has its own URL for bookmarking). Without a tab in the URL the only enabled tab opens, otherwise
-  Schedule. A disabled tab stays in the tab bar (muted) and shows its content read-only; the grain refuses changes.
-* ⚙ settings (`ArrangementSettings`, all members): link with a copy button, members (owner promotes admins); admins
+  **Settings** (the `Faemiyah.Ui` tab components, Settings pushed to the right; each tab has its own URL for
+  bookmarking). Without a tab in the URL the only enabled tab opens, otherwise Schedule. A disabled tab stays in the
+  tab bar and shows its content read-only; the grain refuses changes.
+* Settings (`ArrangementSettings`, all members): link with a copy button, members (owner promotes admins); admins
   also get the participation and tab switches and the details form; the owner can delete, other members can leave.
   Currencies (`CurrencySettings`): base currency (admins; confirmed when rates exist; clears the rates, keeps the
   currencies and adds the old base), then a row ("1 BASE = [rate] X, loss [p] %, ×") per currency added from the
-  "Add a currency…" select; × is disabled while an expense uses the currency. Editable by members while the expenses are
-  enabled. The expense form only offers the base and the added currencies (plus an edited expense's own).
+  "Add a currency" combobox; × is disabled while an expense uses the currency. Editable by members while the expenses are
+  enabled. The expense form only offers the base and the added currencies (plus an edited expense's own), picked with a
+  `Faemiyah.Ui` combobox.
 * Schedule (`Schedule` component, formatting in `ScheduleFormat`): options × members grid, options ordered by time.
   Members edit only their own row while the schedule is enabled; tapping a cell cycles none → Yes → Maybe → No → Yes, each
   tap one `PUT`. The footer shows yes (maybe) counts, a remove button for members (confirmed when the option has
@@ -381,7 +380,7 @@ a 401 sends the user to the login page. The page shows "Reconnecting…" while n
 
 | # | Milestone | Done when |
 |---|---|---|
-| M0 | Restructure solution: WASM template, own cookie auth, projects from section 3, PostgreSQL, RepositoryPrototype wired, Orleans silo running | Register/login works against PostgreSQL; solution builds; empty test projects run |
+| M0 | Restructure solution: WASM template, own cookie auth, projects from section 3, PostgreSQL, Faemiyah.Repository wired, Orleans silo running | Register/login works against PostgreSQL; solution builds; empty test projects run |
 | M1 | Arrangement core: entities + migration, user settings (time zone, default currency, picture), grain create/get/join, admins and closing participation, API, Home, Settings and Arrangement pages | Create an arrangement, open `/{guid}` as another user, join; joining fails after an admin closes participation |
 | M2 | Realtime: hub, groups, client live connection, versioning, reconnect/refetch | Two browsers see each other's joins instantly; survives a server restart and a phone sleep |
 | M3 | Schedule tab: options, votes, close/reopen | Full Doodle flow with live updates; grain tests for permissions |

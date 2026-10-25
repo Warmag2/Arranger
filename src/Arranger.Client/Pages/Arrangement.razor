@@ -7,11 +7,13 @@
 @inject IJSRuntime JS
 @implements IAsyncDisposable
 
-<PageTitle>@(snapshot?.Title ?? "Arrangement") · Arranger</PageTitle>
+<PageTitle>
+    @(snapshot?.Title ?? "Arrangement") · Arranger
+</PageTitle>
 
 @if (error != null)
 {
-    <div class="alert alert-danger">@error</div>
+    <div class="error">@error</div>
 }
 
 @if (snapshot == null)
@@ -24,10 +26,13 @@ else
 
     @if (live?.IsLive != true)
     {
-        <div class="alert alert-warning py-1">Reconnecting… Changes by others will show up once the connection is back.</div>
+        <div class="warning">Reconnecting… Changes by others will show up once the connection is back.</div>
     }
 
-    <h1>@snapshot.Title</h1>
+    <h1>
+        @snapshot.Title
+    </h1>
+
     @if (snapshot.Description.Length > 0)
     {
         <p class="description">@snapshot.Description</p>
@@ -35,27 +40,21 @@ else
 
     @if (snapshot.FindMember(userId) == null)
     {
-        @if (snapshot.IsParticipationClosed)
+        @if (!snapshot.AllowNewUsers)
         {
-            <div class="alert alert-secondary">Participation is closed.</div>
+            <div class="warning">Participation is closed.</div>
         }
         else
         {
-            <button class="btn btn-primary mb-3" disabled="@busy" @onclick="JoinAsync">Join</button>
+            <button class="button button-submit" disabled="@busy" @onclick="JoinAsync">Join</button>
         }
     }
 
-    <ul class="nav nav-tabs mb-3">
-        <li class="nav-item">
-            <a class="nav-link @Active(tab, ArrangementTab.Schedule) @Muted(snapshot.IsScheduleDisabled)" href="@TabPath(ArrangementTab.Schedule)">Schedule</a>
-        </li>
-        <li class="nav-item">
-            <a class="nav-link @Active(tab, ArrangementTab.Expenses) @Muted(snapshot.IsExpensesDisabled)" href="@TabPath(ArrangementTab.Expenses)">Expenses</a>
-        </li>
-        <li class="nav-item ms-auto">
-            <a class="nav-link @Active(tab, ArrangementTab.Settings)" href="@TabPath(ArrangementTab.Settings)" title="Settings" aria-label="Settings">⚙&#xFE0E;</a>
-        </li>
-    </ul>
+    <ContainerTabSelector Enabled="true" SelectedTab="@tab.ToString()" OnTabSelected="OnTabSelected">
+        <ContainerTabItem Name="Schedule" Disabled="@snapshot.IsScheduleDisabled" />
+        <ContainerTabItem Name="Expenses" Disabled="@snapshot.IsExpensesDisabled" />
+        <ContainerTabItem Name="Settings" AlignRight="true" />
+    </ContainerTabSelector>
 
     @switch (tab)
     {
@@ -121,14 +120,12 @@ else
         }
     }
 
-    private static string? Active(ArrangementTab current, ArrangementTab tab)
+    private void OnTabSelected(string name)
     {
-        return current == tab ? "active" : null;
-    }
-
-    private static string? Muted(bool isDisabled)
-    {
-        return isDisabled ? "text-body-tertiary" : null;
+        if (Enum.TryParse<ArrangementTab>(name, true, out var selected) && Enum.IsDefined(selected))
+        {
+            Navigation.NavigateTo(TabPath(selected));
+        }
     }
 
     private string TabPath(ArrangementTab tab)

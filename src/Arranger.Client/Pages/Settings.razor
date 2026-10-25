@@ -6,67 +6,65 @@
 
 <PageTitle>Settings · Arranger</PageTitle>
 
-<h1>Settings</h1>
+<h1>
+    Settings
+</h1>
 
 @if (error != null)
 {
-    <div class="alert alert-danger">@error</div>
+    <div class="error">@error</div>
 }
 
 @if (message != null)
 {
-    <div class="alert alert-success">@message</div>
+    <div class="success">@message</div>
 }
 
 @if (settings == null || timeZones == null)
 {
     @if (error == null)
     {
-        <p>Loading…</p>
+        <p>
+            Loading…
+        </p>
     }
 }
 else
 {
-    <section class="mb-4">
-        <h2 class="h5">Profile picture</h2>
-        <div class="d-flex align-items-center gap-3">
-            <UserAvatar UserId="settings.UserId" Size="96" Revision="pictureRevision" />
-            <div>
-                <InputFile class="form-control mb-2" accept="@ProfilePictureRules.AcceptedContentTypes" OnChange="UploadPictureAsync" disabled="@busy" />
-                @if (settings.HasProfilePicture)
-                {
-                    <button class="btn btn-sm btn-outline-danger" disabled="@busy" @onclick="DeletePictureAsync">Remove picture</button>
-                }
-            </div>
+    <section>
+        <h2>
+            Profile picture
+        </h2>
+
+        <UserAvatar UserId="settings.UserId" Size="96" Revision="pictureRevision" />
+        <div>
+            <InputFile class="input-file" accept="@ProfilePictureRules.AcceptedContentTypes" OnChange="UploadPictureAsync" disabled="@busy" />
+            @if (settings.HasProfilePicture)
+            {
+                <button class="button button-delete" disabled="@busy" @onclick="DeletePictureAsync">Remove picture</button>
+            }
         </div>
     </section>
 
-    <section class="mb-4">
-        <h2 class="h5">Profile</h2>
+    <section>
+        <h2>
+            Profile
+        </h2>
+
         <form @onsubmit="SaveAsync">
-            <div class="mb-3">
-                <label class="form-label" for="handle">Handle</label>
-                <input class="form-control" id="handle" maxlength="@AccountRules.UserNameMaxLength" @bind="userName" />
+            <div class="form">
+                <label class="label-text" for="handle">Handle</label>
+                <input class="input-text" id="handle" maxlength="@AccountRules.UserNameMaxLength" @bind="userName" />
             </div>
-            <div class="mb-3">
-                <label class="form-label" for="time-zone">Time zone</label>
-                <select class="form-select" id="time-zone" @bind="timeZoneId">
-                    @foreach (var timeZone in timeZones)
-                    {
-                        <option value="@timeZone.Id">@timeZone.Name</option>
-                    }
-                </select>
+            <div class="form form-select">
+                <label class="label-text" for="time-zone">Time zone</label>
+                <FormComboBox TItem="string" Options="@TimeZoneOption.Options(timeZones)" SelectedOption="@timeZoneId" OnChanged="@(id => timeZoneId = id)" />
             </div>
-            <div class="mb-3">
-                <label class="form-label" for="currency">Default currency for new arrangements</label>
-                <select class="form-select" id="currency" @bind="currency">
-                    @foreach (var option in Currencies.All)
-                    {
-                        <option value="@option.Code">@option.Code · @option.Name</option>
-                    }
-                </select>
+            <div class="form form-select">
+                <label class="label-text" for="currency">Default currency for new arrangements</label>
+                <FormComboBox TItem="string" Options="@Currencies.Options()" SelectedOption="@currency" OnChanged="@(code => currency = code)" />
             </div>
-            <button type="submit" class="btn btn-primary" disabled="@busy">Save</button>
+            <button type="submit" class="button button-submit" disabled="@busy">Save</button>
         </form>
     </section>
 

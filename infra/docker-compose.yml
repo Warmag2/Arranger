@@ -1,0 +1,30 @@
+name: arranger
+services:
+  # Arranger web app
+  arranger:
+    container_name: arranger
+    hostname: arranger
+    image: arranger:latest
+    environment:
+      ASPNETCORE_ENVIRONMENT: Release
+      ConnectionStrings__Database: "${CONNECTIONSTRING:?err}"
+      DataProtectionKeysPath: "/app/dpkeys"
+      TZ: "Europe/Helsinki"
+    ports:
+      - 127.0.0.1:8549:8080
+    volumes:
+      - arranger-dpkeys:/app/dpkeys
+    networks:
+      - arrangernet
+    restart: on-failure
+    logging:
+      driver: k8s-file
+      options:
+        path: /var/log/containers/arranger.log
+        max-size: 4mb
+
+networks:
+  arrangernet:
+
+volumes:
+  arranger-dpkeys:

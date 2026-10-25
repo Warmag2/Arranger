@@ -1,8 +1,8 @@
 using System;
 using Faemiyah.Arranger.Data.Entities;
 using Microsoft.Extensions.Logging;
-using RepositoryPrototype.Interfaces;
-using RepositoryPrototype.Repositories;
+using Faemiyah.Repository.Interfaces;
+using Faemiyah.Repository.Repositories;
 
 namespace Faemiyah.Arranger.Data.Repositories;
 

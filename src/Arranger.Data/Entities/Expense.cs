@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
-using RepositoryPrototype.Entities;
+using Faemiyah.Repository.Entities;
 
 namespace Faemiyah.Arranger.Data.Entities;
 

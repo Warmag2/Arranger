@@ -9,100 +9,138 @@
     var link = Navigation.ToAbsoluteUri(Snapshot.Id.ToString()).ToString();
 }
 
-<section class="mb-4">
-    <h2 class="h5">Link</h2>
-    <div class="input-group share">
-        <input class="form-control" readonly value="@link" aria-label="Link to this arrangement" />
-        <button class="btn btn-outline-secondary" @onclick="() => CopyAsync(link)">@(copied ? "Copied" : "Copy")</button>
+<section>
+    <h2>
+        Link
+    </h2>
+    <div class="form form-submit">
+        <input class="input-button" readonly value="@link" aria-label="Link to this arrangement" />
+        <button class="button button-submit" @onclick="() => CopyAsync(link)">@(copied ? "Copied" : "Copy")</button>
     </div>
     @if (copyFailed)
     {
-        <div class="form-text">Copying is not available here. Copy the link from the box instead.</div>
+        <div class="form">Copying is not available here. Copy the link from the box instead.</div>
     }
 </section>
 
-<section class="mb-4">
-    <h2 class="h5">Members (@Snapshot.Members.Count)</h2>
-    <ul class="list-group">
-        @foreach (var member in Snapshot.Members)
-        {
-            <li class="list-group-item d-flex align-items-center gap-2">
-                <UserAvatar UserId="member.UserId" />
-                <span>@member.UserName</span>
-                @if (member.UserId == Snapshot.OwnerUserId)
+<section>
+    <h2>
+        Members (@Snapshot.Members.Count)
+    </h2>
+    <div class="scroll">
+        <table>
+            <thead>
+                <tr>
+                    <th scope="col">Member</th>
+                    <th scope="col">Role</th>
+                    @if (isOwner)
+                    {
+                        <th scope="col"></th>
+                    }
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var member in Snapshot.Members)
                 {
-                    <span class="badge bg-primary">Owner</span>
+                    <tr>
+                        <td>
+                            <UserAvatar UserId="member.UserId" />
+                            <span>@member.UserName</span>
+                        </td>
+                        <td>
+                            @if (member.UserId == Snapshot.OwnerUserId)
+                            {
+                                <span class="badge badge-owner">Owner</span>
+                            }
+                            else if (member.IsAdmin)
+                            {
+                                <span class="badge badge-admin">Admin</span>
+                            }
+                        </td>
+                        @if (isOwner)
+                        {
+                            <td>
+                                @if (member.UserId != Snapshot.OwnerUserId)
+                                {
+                                    <button class="button button-submit" disabled="@Busy" @onclick="() => SetAdminAsync(member.UserId, !member.IsAdmin)">
+                                        @(member.IsAdmin ? "Remove admin" : "Make admin")
+                                    </button>
+                                }
+                            </td>
+                        }
+                    </tr>
                 }
-                else if (member.IsAdmin)
-                {
-                    <span class="badge bg-secondary">Admin</span>
-                }
-                @if (isOwner && member.UserId != Snapshot.OwnerUserId)
-                {
-                    <button class="btn btn-sm btn-outline-secondary ms-auto" disabled="@Busy" @onclick="() => SetAdminAsync(member.UserId, !member.IsAdmin)">
-                        @(member.IsAdmin ? "Remove admin" : "Make admin")
-                    </button>
-                }
-            </li>
-        }
-    </ul>
+            </tbody>
+        </table>
+    </div>
 </section>
 
 <CurrencySettings Snapshot="Snapshot" UserId="UserId" Busy="Busy" Run="Run" />
 
 @if (isAdmin)
 {
-    <section class="mb-4">
-        <h2 class="h5">Administration</h2>
+    <section>
+        <h2>
+            Administration
+        </h2>
         <div @key="attempts">
-            <div class="form-check form-switch">
-                <input class="form-check-input" type="checkbox" role="switch" id="participation" checked="@(!Snapshot.IsParticipationClosed)" disabled="@Busy"
+            <div class="form form-switch">
+                <input type="checkbox" id="new-times" checked="@(Snapshot.AllowNewTimes)" disabled="@Busy"
+                       @onchange="e => SetNewTimesAsync((bool)e.Value!)" />
+                <label for="new-times">Open for new time suggestions</label>
+            </div>
+            <div class="form form-switch">
+                <input type="checkbox" id="participation" checked="@(Snapshot.AllowNewUsers)" disabled="@Busy"
                        @onchange="e => SetParticipationAsync((bool)e.Value!)" />
-                <label class="form-check-label" for="participation">Open for new members</label>
+                <label for="participation">Open for new members</label>
             </div>
-            <div class="form-check form-switch">
-                <input class="form-check-input" type="checkbox" role="switch" id="schedule-enabled" checked="@(!Snapshot.IsScheduleDisabled)" disabled="@Busy"
+            <div class="form form-switch">
+                <input type="checkbox" id="schedule-enabled" checked="@(!Snapshot.IsScheduleDisabled)" disabled="@Busy"
                        @onchange="e => SetTabsAsync((bool)e.Value!, !Snapshot.IsExpensesDisabled)" />
-                <label class="form-check-label" for="schedule-enabled">Schedule enabled</label>
+                <label for="schedule-enabled">Schedule enabled</label>
             </div>
-            <div class="form-check form-switch mb-3">
-                <input class="form-check-input" type="checkbox" role="switch" id="expenses-enabled" checked="@(!Snapshot.IsExpensesDisabled)" disabled="@Busy"
+            <div class="form form-switch">
+                <input type="checkbox" id="expenses-enabled" checked="@(!Snapshot.IsExpensesDisabled)" disabled="@Busy"
                        @onchange="e => SetTabsAsync(!Snapshot.IsScheduleDisabled, (bool)e.Value!)" />
-                <label class="form-check-label" for="expenses-enabled">Expenses enabled</label>
+                <label for="expenses-enabled">Expenses enabled</label>
             </div>
         </div>
-        <div class="form-text mb-3">A disabled tab stays visible but cannot be changed. Disabling the schedule closes the poll and confirms the picked time.</div>
+
+        <div class="form">
+            A disabled tab stays visible but cannot be changed. Disabling the schedule closes the poll and confirms the picked time.
+        </div>
+
         <form @onsubmit="UpdateDetailsAsync">
-            <div class="mb-2">
-                <input class="form-control" placeholder="Title" maxlength="@ArrangementRules.TitleMaxLength" @bind="title" />
+            <div class="form">
+                <input placeholder="Title" maxlength="@ArrangementRules.TitleMaxLength" @bind="title" />
             </div>
-            <div class="mb-2">
-                <textarea class="form-control" rows="3" placeholder="Description" maxlength="@ArrangementRules.DescriptionMaxLength" @bind="description"></textarea>
+            <div class="form">
+                <textarea rows="3" placeholder="Description" maxlength="@ArrangementRules.DescriptionMaxLength" @bind="description"></textarea>
             </div>
             @if (detailsError != null)
             {
-                <div class="text-danger mb-2">@detailsError</div>
+                <div class="warning">@detailsError</div>
             }
-            <button type="submit" class="btn btn-primary" disabled="@Busy">Save details</button>
+            <button type="submit" class="button button-submit" disabled="@Busy">Save details</button>
         </form>
     </section>
 }
 
 @if (isOwner)
 {
-    <section class="mb-4">
-        <button class="btn btn-outline-danger" disabled="@(Busy || deleting)" @onclick="DeleteAsync">Delete arrangement</button>
+    <section>
+        <button class="button button-delete" disabled="@(Busy || deleting)" @onclick="DeleteAsync">Delete arrangement</button>
         @if (deleteError != null)
         {
-            <div class="text-danger mt-2">@deleteError</div>
+            <div class="warning">@deleteError</div>
         }
     </section>
 }
 else if (me != null)
 {
-    <section class="mb-4">
-        <button class="btn btn-outline-danger" disabled="@Busy" @onclick="LeaveAsync">Leave arrangement</button>
-        <div class="form-text">You can leave unless you paid or share an expense. Votes will be removed.</div>
+    <section>
+        <button class="button button-delete" disabled="@Busy" @onclick="LeaveAsync">Leave arrangement</button>
+        <p class="secondary">Any schedule votes will be removed.<br />If you have paid or shared an expense, you cannot leave and the your participation remains recorded.</p>
     </section>
 }
 
@@ -156,6 +194,12 @@ else if (me != null)
     private async Task SetParticipationAsync(bool isOpen)
     {
         await Run(HttpMethod.Put, "participation", new SetParticipationRequest(isOpen));
+        Redraw();
+    }
+
+    private async Task SetNewTimesAsync(bool isOpen)
+    {
+        await Run(HttpMethod.Put, "new-times", new SetAllowNewTimesRequest(isOpen));
         Redraw();
     }
 

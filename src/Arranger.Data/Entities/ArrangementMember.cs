@@ -1,6 +1,6 @@
 using System;
 using Microsoft.EntityFrameworkCore;
-using RepositoryPrototype.Entities;
+using Faemiyah.Repository.Entities;
 
 namespace Faemiyah.Arranger.Data.Entities;
 

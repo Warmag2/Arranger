@@ -12,8 +12,8 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Faemiyah.Arranger.Data.Migrations
 {
     [DbContext(typeof(ArrangerContext))]
-    [Migration("20261019165155_ExchangeRates")]
-    partial class ExchangeRates
+    [Migration("20261022164129_Initial")]
+    partial class Initial
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -32,6 +32,12 @@ namespace Faemiyah.Arranger.Data.Migrations
                         .HasColumnType("bigint");
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<bool>("AllowNewTimes")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("AllowNewUsers")
+                        .HasColumnType("boolean");
 
                     b.Property<string>("BaseCurrency")
                         .IsRequired()
@@ -56,9 +62,6 @@ namespace Faemiyah.Arranger.Data.Migrations
                         .HasColumnType("bigint");
 
                     b.Property<bool>("IsExpensesDisabled")
-                        .HasColumnType("boolean");
-
-                    b.Property<bool>("IsParticipationClosed")
                         .HasColumnType("boolean");
 
                     b.Property<bool>("IsScheduleDisabled")
@@ -151,7 +154,10 @@ namespace Faemiyah.Arranger.Data.Migrations
                         .HasMaxLength(3)
                         .HasColumnType("character varying(3)");
 
-                    b.Property<decimal>("Rate")
+                    b.Property<decimal>("LossPercent")
+                        .HasColumnType("numeric(5,2)");
+
+                    b.Property<decimal?>("Rate")
                         .HasColumnType("numeric(19,8)");
 
                     b.Property<DateTime>("UpdateTime")

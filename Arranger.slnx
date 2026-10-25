@@ -11,14 +11,9 @@
     <Project Path="tests/Arranger.IntegrationTests/Arranger.IntegrationTests.csproj" />
     <Project Path="tests/Arranger.UnitTests/Arranger.UnitTests.csproj" />
   </Folder>
-  <Folder Name="/external/">
-    <Project Path="../Faemiyah.Ui/src/Faemiyah.Ui/Faemiyah.Ui.csproj" />
-    <Project Path="../RepositoryPrototype/src/RepositoryPrototype/RepositoryPrototype.csproj" />
-  </Folder>
   <Folder Name="/Solution Items/">
     <File Path=".editorconfig" />
     <File Path="Directory.Build.props" />
-    <File Path="Directory.Packages.props" />
     <File Path="docker-compose.dev.yml" />
     <File Path="Plan.md" />
   </Folder>

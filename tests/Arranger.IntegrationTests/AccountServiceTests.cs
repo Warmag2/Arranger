@@ -11,7 +11,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using NUnit.Framework;
-using RepositoryPrototype.Interfaces;
+using Faemiyah.Repository.Interfaces;
 
 namespace Faemiyah.Arranger.IntegrationTests;
 

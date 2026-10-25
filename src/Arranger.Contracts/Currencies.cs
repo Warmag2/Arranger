@@ -215,4 +215,39 @@ public static class Currencies
     {
         return Names.GetValueOrDefault(code, code);
     }
+
+    /// <summary>
+    /// The display label of a currency, as "CODE · Name".
+    /// </summary>
+    /// <param name="code">The currency code.</param>
+    /// <returns>The label.</returns>
+    public static string Label(string code)
+    {
+        return $"{code} · {Name(code)}";
+    }
+
+    /// <summary>
+    /// Combo box options (label to code) for the given currencies, ordered by label.
+    /// </summary>
+    /// <param name="codes">The currency codes.</param>
+    /// <returns>The options.</returns>
+    public static SortedDictionary<string, string> Options(IEnumerable<string> codes)
+    {
+        var options = new SortedDictionary<string, string>(StringComparer.Ordinal);
+        foreach (var code in codes)
+        {
+            options[Label(code)] = code;
+        }
+
+        return options;
+    }
+
+    /// <summary>
+    /// Combo box options (label to code) for every currency, ordered by label.
+    /// </summary>
+    /// <returns>The options.</returns>
+    public static SortedDictionary<string, string> Options()
+    {
+        return Options(All.Select(c => c.Code));
+    }
 }

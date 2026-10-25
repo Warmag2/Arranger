@@ -5,52 +5,57 @@
     var me = Snapshot.FindMember(UserId);
     var isAdmin = me?.IsAdmin == true;
     var canEdit = me != null && !Snapshot.IsScheduleDisabled;
+    var canAddTime = canEdit && (isAdmin || Snapshot.AllowNewTimes);
     var final = Snapshot.TimeOptions.FirstOrDefault(o => o.Id == Snapshot.FinalTimeOptionId);
 }
 
 @if (Snapshot.IsScheduleDisabled)
 {
-    <div class="alert @(final == null ? "alert-secondary" : "alert-success") d-flex flex-wrap align-items-center gap-2">
-        <span>
-            @if (final == null)
-            {
-                <text>The schedule is closed.</text>
-            }
-            else
-            {
-                var (day, time) = ScheduleFormat.Describe(final, CurrentUser.TimeZone);
-                <text>The time is <strong>@day @time</strong>.</text>
-            }
-        </span>
+    <div class="@(final == null ? "warning" : "success")">
+        @if (final == null)
+        {
+            <span>The schedule is closed.</span>
+        }
+        else
+        {
+            var (day, time) = ScheduleFormat.Describe(final, CurrentUser.TimeZone);
+            <span>The time is <strong>@day @time</strong>.</span>
+        }
         @if (isAdmin)
         {
-            <button class="btn btn-sm btn-outline-secondary ms-auto" disabled="@Busy" @onclick="ReopenAsync">Reopen</button>
+            <button class="button button-submit" disabled="@Busy" @onclick="ReopenAsync">Reopen</button>
         }
     </div>
 }
 else if (final != null || isAdmin)
 {
-    <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+    @if (isAdmin)
+    {
+        <div>
+            <button class="button button-submit" disabled="@Busy" title="Stop changes and confirm the picked time" @onclick="CloseAsync">Close schedule</button>
+        </div>
+    }
+    <div>
         @if (final != null)
         {
             var (day, time) = ScheduleFormat.Describe(final, CurrentUser.TimeZone);
-            <span>Picked: <strong>@day @time</strong></span>
+            <p>Picked: <strong>@day @time</strong></p>
         }
-        @if (isAdmin)
+        else
         {
-            <button class="btn btn-sm btn-outline-success ms-auto" disabled="@Busy" title="Stop changes and confirm the picked time" @onclick="CloseAsync">Close schedule</button>
+            <p>No date selction yet.</p>
         }
     </div>
 }
 
 @if (Snapshot.TimeOptions.Count == 0)
 {
-    <p class="text-body-secondary">No times proposed yet.</p>
+    <p class="secondary">No times proposed yet.</p>
 }
 else
 {
-    <div class="table-responsive mb-3">
-        <table class="table table-sm table-bordered align-middle text-center schedule">
+    <div class="schedule">
+        <table>
             <thead>
                 <tr>
                     <th scope="col"></th>
@@ -59,7 +64,7 @@ else
                         var (day, time) = ScheduleFormat.Describe(option, CurrentUser.TimeZone);
                         <th scope="col" class="@FinalClass(option)">
                             <div>@day</div>
-                            <div class="fw-normal">@time</div>
+                            <small>@time</small>
                         </th>
                     }
                 </tr>
@@ -69,7 +74,7 @@ else
                 {
                     var isMine = member.UserId == UserId;
                     <tr>
-                        <th scope="row" class="text-start text-nowrap">
+                        <th scope="row">
                             <UserAvatar UserId="member.UserId" Size="24" />
                             @member.UserName
                         </th>
@@ -94,7 +99,7 @@ else
             </tbody>
             <tfoot>
                 <tr>
-                    <th scope="row" class="text-start">Yes <span class="fw-normal">(maybe)</span></th>
+                    <th scope="row">Yes <small>(maybe)</small></th>
                     @foreach (var option in Snapshot.TimeOptions)
                     {
                         var maybe = option.Count(VoteAnswer.Maybe);
@@ -113,14 +118,14 @@ else
                         <td></td>
                         @foreach (var option in Snapshot.TimeOptions)
                         {
-                            <td class="text-nowrap">
+                            <td>
                                 @if (isAdmin)
                                 {
                                     var isPicked = option.Id == Snapshot.FinalTimeOptionId;
-                                    <button class="btn btn-sm @(isPicked ? "btn-success" : "btn-outline-success")" disabled="@Busy" title="@(isPicked ? "Clear the pick" : "Pick this time")"
+                                    <button class="button" aria-pressed="@(isPicked ? "true" : "false")" disabled="@Busy" title="@(isPicked ? "Clear the pick" : "Pick this time")"
                                             @onclick="() => PickAsync(isPicked ? null : option.Id)">Pick</button>
                                 }
-                                <button class="btn btn-sm btn-outline-danger" disabled="@Busy" title="Remove this time" @onclick="() => RemoveAsync(option)">×</button>
+                                <button class="button button-delete" disabled="@Busy" title="Remove this time" @onclick="() => RemoveAsync(option)">×</button>
                             </td>
                         }
                     </tr>
@@ -130,40 +135,40 @@ else
     </div>
 }
 
-@if (canEdit && !adding)
+@if (canAddTime && !adding)
 {
-    <button class="btn btn-outline-primary" @onclick="() => adding = true">Add time</button>
+    <button class="button button-submit" @onclick="() => adding = true">Add time</button>
 }
-else if (canEdit)
+else if (canAddTime)
 {
-    <form class="row g-2 align-items-end mb-2" @onsubmit="AddAsync">
-        <div class="col-auto">
-            <label class="form-label" for="option-date">Date</label>
-            <input id="option-date" class="form-control" type="date" @bind="date" />
+    <form @onsubmit="AddAsync">
+        <div class="form">
+            <label for="option-date">Date</label>
+            <input id="option-date" type="date" @bind="date" />
         </div>
         @if (!isWholeDay)
         {
-            <div class="col-auto">
-                <label class="form-label" for="option-start">Start</label>
-                <input id="option-start" class="form-control" type="time" @bind="start" />
+            <div class="form">
+                <label for="option-start">Start</label>
+                <input id="option-start" type="time" @bind="start" />
             </div>
-            <div class="col-auto">
-                <label class="form-label" for="option-end">End (optional)</label>
-                <input id="option-end" class="form-control" type="time" @bind="end" />
+            <div class="form">
+                <label for="option-end">End (optional)</label>
+                <input id="option-end" type="time" @bind="end" />
             </div>
         }
-        <div class="col-auto form-check ms-2 mb-2">
-            <input id="option-whole-day" class="form-check-input" type="checkbox" @bind="isWholeDay" />
-            <label class="form-check-label" for="option-whole-day">All day</label>
+        <div class="form form-switch">
+            <input id="option-whole-day" type="checkbox" @bind="isWholeDay" />
+            <label for="option-whole-day">All day</label>
         </div>
-        <div class="col-auto">
-            <button type="submit" class="btn btn-primary" disabled="@Busy">Add</button>
-            <button type="button" class="btn btn-outline-secondary" @onclick="() => adding = false">Done</button>
+        <div class="form form-submit">
+            <button type="submit" class="button button-submit" disabled="@Busy">Add</button>
+            <button type="button" class="button" @onclick="() => adding = false">Done</button>
         </div>
     </form>
     @if (formError != null)
     {
-        <div class="text-danger mb-2">@formError</div>
+        <div class="warning">@formError</div>
     }
 }
 
@@ -209,9 +214,9 @@ else if (canEdit)
     {
         return answer switch
         {
-            VoteAnswer.Yes => "table-success",
-            VoteAnswer.Maybe => "table-warning",
-            VoteAnswer.No => "table-danger",
+            VoteAnswer.Yes => "yes",
+            VoteAnswer.Maybe => "maybe",
+            VoteAnswer.No => "no",
             _ => null,
         };
     }

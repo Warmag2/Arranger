@@ -4,7 +4,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
-using RepositoryPrototype.Interfaces;
+using Faemiyah.Repository.Interfaces;
 
 namespace Faemiyah.Arranger.Data.Queries;
 

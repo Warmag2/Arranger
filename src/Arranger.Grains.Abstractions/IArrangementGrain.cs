@@ -87,6 +87,16 @@ public interface IArrangementGrain : IGrainWithGuidKey
     Task<CommandResult> SetParticipationOpenAsync(Guid userId, bool isOpen);
 
     /// <summary>
+    /// Open or close the arrangement for new time suggestions from non-admin members. When closed, only admins can
+    /// add times. Admin only.
+    /// </summary>
+    /// <param name="userId">The acting user.</param>
+    /// <param name="isAllowed">Whether non-admin members may suggest new times.</param>
+    /// <returns>The arrangement.</returns>
+    [Alias("SetAllowNewTimes")]
+    Task<CommandResult> SetAllowNewTimesAsync(Guid userId, bool isAllowed);
+
+    /// <summary>
     /// Enable or disable the schedule and expenses tabs. A disabled tab stays visible but refuses changes. Admin only.
     /// </summary>
     /// <param name="userId">The acting user.</param>

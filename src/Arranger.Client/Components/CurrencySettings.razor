@@ -13,33 +13,30 @@
         .ToList();
 }
 
-<section class="mb-4" @key="attempts">
-    <h2 class="h5">Currencies</h2>
-    <div class="input-group mb-3">
-        <label class="input-group-text" for="base-currency">Base currency</label>
-        <select id="base-currency" class="form-select" disabled="@(!isAdmin || Busy)" @onchange="e => SetBaseCurrencyAsync((string)e.Value!)">
-            @foreach (var option in Currencies.All)
-            {
-                <option value="@option.Code" selected="@(option.Code == baseCurrency)">@option.Code · @option.Name</option>
-            }
-        </select>
+<section @key="attempts">
+    <h2>
+        Currencies
+    </h2>
+    <div class="form form-select">
+        <label class="label-text">Base currency</label>
+        <FormComboBox TItem="string" Options="@Currencies.Options()" SelectedOption="@baseCurrency" OnChanged="SetBaseCurrencyAsync" />
     </div>
 
     @foreach (var currency in shown)
     {
         var rate = Snapshot.ExchangeRates.GetValueOrDefault(currency);
         var isUsed = Snapshot.Expenses.Any(e => e.Currency == currency);
-        <div class="input-group input-group-sm mb-2">
-            <label class="input-group-text" for="rate-@currency">1 @baseCurrency =</label>
-            <input id="rate-@currency" class="form-control" type="number" min="0" step="any" disabled="@(!canEditRates || Busy)"
+        <div class="form form-group">
+            <label class="label-text" for="rate-@currency">1 @baseCurrency =</label>
+            <input id="rate-@currency" class="form-number" type="number" min="0" step="any" disabled="@(!canEditRates || Busy)"
                    value="@Number(rate?.Rate)" @onchange="e => SetRateAsync(currency, Parse(e.Value), rate?.LossPercent ?? 0)" />
-            <span class="input-group-text">@currency</span>
-            <label class="input-group-text" for="loss-@currency" title="Average loss on converting to @currency">loss</label>
-            <input id="loss-@currency" class="form-control loss" type="number" min="0" max="@ExpenseRules.MaxLossPercent" step="any"
+            <span class="form-group-text">@currency</span>
+            <label class="label-text" for="loss-@currency" title="Average loss on converting to @currency">loss</label>
+            <input id="loss-@currency" class="form-number" type="number" min="0" max="@ExpenseRules.MaxLossPercent" step="any"
                    disabled="@(!canEditRates || Busy)" value="@Number(rate?.LossPercent ?? 0)"
                    @onchange="e => SetRateAsync(currency, rate?.Rate, Parse(e.Value) ?? 0)" />
-            <span class="input-group-text">%</span>
-            <button class="btn btn-outline-danger" type="button" disabled="@(!canEditRates || Busy || isUsed || rate == null)"
+            <span class="form-group-text">%</span>
+            <button class="button button-delete" type="button" disabled="@(!canEditRates || Busy || isUsed || rate == null)"
                     title="@(isUsed ? "Used by expenses" : "Remove the currency")" aria-label="Remove @currency"
                     @onclick="() => RemoveAsync(currency)">×</button>
         </div>
@@ -47,21 +44,18 @@
 
     @if (canEditRates)
     {
-        <select class="form-select form-select-sm mb-2" aria-label="Add a currency" @onchange="e => AddAsync((string)e.Value!)">
-            <option value="" selected>Add a currency…</option>
-            @foreach (var option in Currencies.All.Where(c => c.Code != baseCurrency && !shown.Contains(c.Code)))
-            {
-                <option value="@option.Code">@option.Code · @option.Name</option>
-            }
-        </select>
+        <div class="form form-select">
+            <label class="label-text">Add a currency</label>
+            <FormComboBox TItem="string" Options="@AddableCurrencyOptions(shown, baseCurrency)" OnChanged="AddAsync" />
+        </div>
     }
 
-    <div class="form-text">
+    <p class="secondary">
         Expenses can be recorded in the base currency and the currencies added here. Balances are shown in the base
         currency once every currency used has a rate; only admins change the base currency, which clears the rates.
         A currency can be removed while no expense uses it. The loss is what you lose on average when converting
         to the currency, for example in exchange fees: you get that much less of it for your money.
-    </div>
+    </p>
 </section>
 
 @code {
@@ -102,6 +96,13 @@
         return value is string text && !string.IsNullOrWhiteSpace(text) ? decimal.Parse(text, NumberStyles.Float, CultureInfo.InvariantCulture) : null;
     }
 
+    private static SortedDictionary<string, string> AddableCurrencyOptions(List<string> shown, string baseCurrency)
+    {
+        return Currencies.Options(Currencies.All
+            .Where(c => c.Code != baseCurrency && !shown.Contains(c.Code))
+            .Select(c => c.Code));
+    }
+
     private async Task AddAsync(string code)
     {
         if (code.Length > 0)
@@ -126,6 +127,11 @@
 
     private async Task SetBaseCurrencyAsync(string currency)
     {
+        if (currency == Snapshot.BaseCurrency)
+        {
+            return;
+        }
+
         if (Snapshot.ExchangeRates.Count == 0 || await JS.InvokeAsync<bool>("confirm", $"Change the base currency to {currency}? The exchange rates are cleared, but the currencies stay."))
         {
             await Run(HttpMethod.Put, "base-currency", new SetBaseCurrencyRequest(currency));

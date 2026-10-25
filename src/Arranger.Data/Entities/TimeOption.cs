@@ -1,5 +1,5 @@
 using System.Collections.Generic;
-using RepositoryPrototype.Entities;
+using Faemiyah.Repository.Entities;
 
 namespace Faemiyah.Arranger.Data.Entities;
 

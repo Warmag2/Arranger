@@ -1,15 +1,19 @@
 ﻿@inherits LayoutComponentBase
+@inject NavigationManager Navigation
 
-<div class="page">
-    <div class="sidebar">
+<div class="wpane">
+
+    <nav class="navigation">
+        <div class="title">
+            Arranger
+        </div>
         <NavMenu />
-    </div>
+    </nav>
 
-    <main>
-        <article class="content px-4">
-            @Body
-        </article>
+    <main class="cpane">
+        @Body
     </main>
+
 </div>
 
 <div id="blazor-error-ui" data-nosnippet>

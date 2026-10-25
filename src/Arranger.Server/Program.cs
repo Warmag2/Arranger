@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using Faemiyah.Arranger.Data.Entities;
 using Faemiyah.Arranger.Data.Extensions;
 using Faemiyah.Arranger.Server.Authentication;
@@ -9,6 +10,7 @@ using Faemiyah.Arranger.Server.Realtime;
 using Faemiyah.Arranger.Server.Users;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection;
@@ -50,6 +52,13 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
     });
 builder.Services.AddAuthorization();
 builder.Services.AddHealthChecks();
+
+var dataProtection = builder.Services.AddDataProtection().SetApplicationName("Arranger");
+var dataProtectionKeysPath = builder.Configuration["DataProtectionKeysPath"];
+if (!string.IsNullOrEmpty(dataProtectionKeysPath))
+{
+    dataProtection.PersistKeysToFileSystem(new DirectoryInfo(dataProtectionKeysPath));
+}
 
 var app = builder.Build();
 

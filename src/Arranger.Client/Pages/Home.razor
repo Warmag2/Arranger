@@ -5,17 +5,18 @@
 
 <PageTitle>Arranger</PageTitle>
 
-<h1>Arranger</h1>
-
 @if (error != null)
 {
-    <div class="alert alert-danger">@error</div>
+    <div class="error">@error</div>
 }
 
-<a class="btn btn-primary mb-4" href="new">New</a>
+<a class="button button-submit" href="new">New</a>
 
 <section>
-    <h2 class="h5">My arrangements</h2>
+    <h2>
+        My arrangements
+    </h2>
+
     @if (arrangements == null)
     {
         <p>Loading…</p>
@@ -26,26 +27,41 @@
     }
     else
     {
-        <div class="list-group">
-            @foreach (var arrangement in arrangements)
-            {
-                <a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" href="@arrangement.Id">
-                    <span>
-                        @arrangement.Title
-                        @if (arrangement.IsOwner)
-                        {
-                            <span class="badge bg-primary ms-2">Owner</span>
-                        }
-                        else if (arrangement.IsAdmin)
-                        {
-                            <span class="badge bg-secondary ms-2">Admin</span>
-                        }
-                    </span>
-                    <small class="text-muted">
-                        @arrangement.MemberCount members · @CurrentUser.ToLocalTime(arrangement.CreatedAt).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
-                    </small>
-                </a>
-            }
+        <div class="scroll">
+            <table>
+                <thead>
+                    <tr>
+                        <th scope="col">Arrangement</th>
+                        <th scope="col">Role</th>
+                        <th scope="col" class="number">Members</th>
+                        <th scope="col">Created</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var arrangement in arrangements)
+                    {
+                        <tr>
+                            <td><a href="@arrangement.Id">@arrangement.Title</a></td>
+                            <td>
+                                @if (arrangement.IsOwner)
+                                {
+                                    <span class="badge badge-owner">Owner</span>
+                                }
+                                else if (arrangement.IsAdmin)
+                                {
+                                    <span class="badge badge-admin">Admin</span>
+                                }
+                                else
+                                {
+                                    <span class="badge badge-member">Member</span>
+                                }
+                            </td>
+                            <td class="number">@arrangement.MemberCount</td>
+                            <td>@CurrentUser.ToLocalTime(arrangement.CreatedAt).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
         </div>
     }
 </section>

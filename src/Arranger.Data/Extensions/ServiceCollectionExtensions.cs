@@ -5,8 +5,8 @@ using Faemiyah.Arranger.Data.Repositories;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using RepositoryPrototype.Extensions;
-using RepositoryPrototype.Interfaces;
+using Faemiyah.Repository.Extensions;
+using Faemiyah.Repository.Interfaces;
 
 namespace Faemiyah.Arranger.Data.Extensions;
 
@@ -16,7 +16,7 @@ namespace Faemiyah.Arranger.Data.Extensions;
 public static class ServiceCollectionExtensions
 {
     /// <summary>
-    /// The configuration section holding the RepositoryPrototype <c>SqlOptions</c>.
+    /// The configuration section holding the Faemiyah.Repository <c>SqlOptions</c>.
     /// </summary>
     public const string SqlSectionName = "Sql";
 
