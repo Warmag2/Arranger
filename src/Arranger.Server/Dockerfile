@@ -6,6 +6,7 @@ WORKDIR /app
 
 FROM faemiyahsdk:latest AS build
 WORKDIR /build
+COPY ["Directory.Build.props", "."]
 COPY ["src/", "src/"]
 WORKDIR "/build/src/Arranger.Server"
 RUN dotnet publish "Arranger.Server.csproj" -c Release -o /app/publish
