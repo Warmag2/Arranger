@@ -44,6 +44,7 @@ else
                 <button class="button button-delete" disabled="@busy" @onclick="DeletePictureAsync">Remove picture</button>
             }
         </div>
+        <p class="secondary">PNG, JPEG or WebP, up to @(ProfilePictureRules.MaxDimension)×@(ProfilePictureRules.MaxDimension) pixels. Larger pictures are scaled down automatically.</p>
     </section>
 
     <section>
@@ -163,14 +164,22 @@ else
 
     private static async Task<(byte[] Bytes, string ContentType)?> PrepareUploadAsync(IBrowserFile file)
     {
-        // A picture that is already an accepted format and within the size limit is uploaded as-is, keeping its exact
-        // quality and any transparency. A larger one (or another format) is scaled down and re-encoded instead.
+        // A picture already in an accepted format and within both the byte and pixel limits is uploaded as-is, keeping
+        // its exact quality and any transparency.
         if (file.ContentType is "image/png" or "image/jpeg" or "image/webp" && file.Size <= ProfilePictureRules.MaxBytes)
         {
-            return (await ReadBytesAsync(file), file.ContentType);
+            var original = await ReadBytesAsync(file);
+            if (ProfilePictureRules.ReadDimensions(original) is { } size
+                && size.Width <= ProfilePictureRules.MaxDimension
+                && size.Height <= ProfilePictureRules.MaxDimension)
+            {
+                return (original, file.ContentType);
+            }
         }
 
-        // WebP and PNG keep an alpha channel, so re-encode them back to themselves; everything else becomes JPEG.
+        // Anything larger (big phone photos and the like) is scaled down to the upload size and re-encoded, so it is
+        // accepted rather than rejected. WebP and PNG keep an alpha channel, so re-encode them back to themselves;
+        // everything else becomes JPEG.
         var format = file.ContentType is "image/png" or "image/webp" ? file.ContentType : "image/jpeg";
         var image = await file.RequestImageFileAsync(format, ProfilePictureRules.UploadDimension, ProfilePictureRules.UploadDimension);
         return image.Size > ProfilePictureRules.MaxBytes ? null : (await ReadBytesAsync(image), image.ContentType);
