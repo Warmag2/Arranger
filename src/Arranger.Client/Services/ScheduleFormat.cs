@@ -10,8 +10,8 @@ namespace Faemiyah.Arranger.Client.Services;
 public static class ScheduleFormat
 {
     /// <summary>
-    /// Describe a time option for the viewer. Whole-day options show their UTC date; timed ones are converted to the
-    /// viewer's time zone. An end on a later day is marked with the number of days, e.g. <c>22:00–02:00 (+1)</c>.
+    /// Describe a time option for the viewer. Whole-day options show their UTC date, or a UTC date range; timed ones
+    /// are converted to the viewer's time zone. A timed end on a later day shows that day's date.
     /// </summary>
     /// <param name="option">The time option.</param>
     /// <param name="timeZone">The viewer's time zone.</param>
@@ -21,7 +21,9 @@ public static class ScheduleFormat
         ArgumentNullException.ThrowIfNull(option);
         if (option.IsWholeDay)
         {
-            return (FormatDate(option.DateBegin), "All day");
+            return option.DateEnd is { } wholeEnd
+                ? (FormatDate(option.DateBegin), "– " + FormatDate(wholeEnd))
+                : (FormatDate(option.DateBegin), "All day");
         }
 
         var begin = ToLocal(option.DateBegin, timeZone);
@@ -31,9 +33,9 @@ public static class ScheduleFormat
         }
 
         var end = ToLocal(utcEnd, timeZone);
-        var days = (end.Date - begin.Date).Days;
-        var suffix = days == 0 ? string.Empty : string.Create(CultureInfo.InvariantCulture, $" (+{days})");
-        return (FormatDate(begin), $"{FormatTime(begin)}–{FormatTime(end)}{suffix}");
+        return end.Date == begin.Date
+            ? (FormatDate(begin), $"{FormatTime(begin)}–{FormatTime(end)}")
+            : (FormatDate(begin), $"{FormatTime(begin)} – {FormatDate(end)} {FormatTime(end)}");
     }
 
     /// <summary>

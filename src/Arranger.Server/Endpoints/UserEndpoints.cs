@@ -119,6 +119,16 @@ public static class UserEndpoints
             return TypedResults.Problem("The picture must be PNG, JPEG or WebP.", statusCode: StatusCodes.Status415UnsupportedMediaType);
         }
 
+        // Read the dimensions from the header without decoding the pixels, so a tiny file cannot expand to a huge
+        // bitmap in the browsers that show it.
+        var dimensions = ProfilePictureRules.ReadDimensions(data);
+        if (dimensions is not { } size || size.Width > ProfilePictureRules.MaxDimension || size.Height > ProfilePictureRules.MaxDimension)
+        {
+            return TypedResults.Problem(
+                $"The picture can be at most {ProfilePictureRules.MaxDimension}×{ProfilePictureRules.MaxDimension} pixels.",
+                statusCode: StatusCodes.Status413PayloadTooLarge);
+        }
+
         var profile = await queries.GetProfileAsync(request.HttpContext.User.GetRequiredUserId(), cancellationToken);
         if (profile == null)
         {

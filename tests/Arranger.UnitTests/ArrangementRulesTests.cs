@@ -45,6 +45,7 @@ public class ArrangementRulesTests
         var day = new DateTime(2026, 6, 19, 0, 0, 0, DateTimeKind.Utc);
 
         ArrangementRules.ValidateTimeOption(day, null, true).Should().BeNull();
+        ArrangementRules.ValidateTimeOption(day, day.AddDays(2), true).Should().BeNull();
         ArrangementRules.ValidateTimeOption(day.AddHours(18), null, false).Should().BeNull();
         ArrangementRules.ValidateTimeOption(day.AddHours(18), day.AddHours(26), false).Should().BeNull();
     }
@@ -57,7 +58,8 @@ public class ArrangementRulesTests
         ArrangementRules.ValidateTimeOption(DateTime.SpecifyKind(day, DateTimeKind.Local), null, true).Should().NotBeNull();
         ArrangementRules.ValidateTimeOption(new DateTime(1999, 1, 1, 0, 0, 0, DateTimeKind.Utc), null, true).Should().NotBeNull();
         ArrangementRules.ValidateTimeOption(day.AddHours(1), null, true).Should().NotBeNull();
-        ArrangementRules.ValidateTimeOption(day, day.AddDays(1), true).Should().NotBeNull();
+        ArrangementRules.ValidateTimeOption(day, day.AddHours(30), true).Should().NotBeNull();
+        ArrangementRules.ValidateTimeOption(day, day, true).Should().NotBeNull();
         ArrangementRules.ValidateTimeOption(day.AddHours(18), day.AddHours(18), false).Should().NotBeNull();
     }
 }

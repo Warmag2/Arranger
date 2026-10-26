@@ -84,8 +84,8 @@ public static class ArrangementRules
     }
 
     /// <summary>
-    /// Validate a time option. Times are UTC instants. A whole-day option starts at a UTC midnight and has no end;
-    /// a timed one may have an end, after its start.
+    /// Validate a time option. Times are UTC instants. A whole-day option starts at a UTC midnight and may span to a
+    /// later UTC midnight (its inclusive end date); a timed one may have an end, after its start.
     /// </summary>
     /// <param name="dateBegin">The start.</param>
     /// <param name="dateEnd">The end, or <b>null</b>.</param>
@@ -105,7 +105,12 @@ public static class ArrangementRules
 
         if (isWholeDay)
         {
-            return dateBegin.TimeOfDay == TimeSpan.Zero && dateEnd == null ? null : "A whole-day option is a date without times.";
+            if (dateBegin.TimeOfDay != TimeSpan.Zero || (dateEnd is { } wholeEnd && wholeEnd.TimeOfDay != TimeSpan.Zero))
+            {
+                return "A whole-day option is a date without times.";
+            }
+
+            return dateEnd is { } dayEnd && dayEnd <= dateBegin ? "The end date must be after the start date." : null;
         }
 
         return dateEnd <= dateBegin ? "The end must be after the start." : null;

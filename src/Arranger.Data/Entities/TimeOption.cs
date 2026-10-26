@@ -8,8 +8,8 @@ namespace Faemiyah.Arranger.Data.Entities;
 /// </summary>
 /// <remarks>
 /// <see cref="TemporalEntityBase{TKey}.DateBegin"/> is always set. A whole-day option starts at the UTC midnight of
-/// the day and has no <see cref="TemporalEntityBase{TKey}.DateEnd"/>; <see cref="IsWholeDay"/> tells it apart from a
-/// timed option without an end.
+/// the first day; <see cref="TemporalEntityBase{TKey}.DateEnd"/> is <b>null</b> for a single day or the UTC midnight of
+/// the inclusive last day for a range. <see cref="IsWholeDay"/> tells it apart from a timed option.
 /// </remarks>
 public class TimeOption : TemporalEntityBase<long>
 {
