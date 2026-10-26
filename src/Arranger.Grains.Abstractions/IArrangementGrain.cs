@@ -59,7 +59,9 @@ public interface IArrangementGrain : IGrainWithGuidKey
     Task<CommandResult> SetBaseCurrencyAsync(Guid userId, string currency);
 
     /// <summary>
-    /// Add a currency for expenses, or change its exchange rate to the base currency. Requires the expenses to be enabled.
+    /// Add a currency for expenses (admin only), or change its exchange rate and conversion loss (any member). A
+    /// currency added without a rate is seeded with the latest market rate when one is available. Requires the
+    /// expenses to be enabled.
     /// </summary>
     /// <param name="userId">The acting user.</param>
     /// <param name="currency">The ISO 4217 currency, other than the base currency.</param>
@@ -69,13 +71,22 @@ public interface IArrangementGrain : IGrainWithGuidKey
     Task<CommandResult> SetExchangeRateAsync(Guid userId, string currency, SetExchangeRateRequest request);
 
     /// <summary>
-    /// Remove a currency that no expense uses. Requires the expenses to be enabled.
+    /// Remove a currency that no expense uses. Admin only.
     /// </summary>
     /// <param name="userId">The acting user.</param>
     /// <param name="currency">The ISO 4217 currency.</param>
     /// <returns>The arrangement.</returns>
     [Alias("RemoveCurrency")]
     Task<CommandResult> RemoveCurrencyAsync(Guid userId, string currency);
+
+    /// <summary>
+    /// Refresh every added currency's exchange rate from the latest market rates, keeping each conversion loss. Admin
+    /// only.
+    /// </summary>
+    /// <param name="userId">The acting user.</param>
+    /// <returns>The arrangement.</returns>
+    [Alias("RefreshRates")]
+    Task<CommandResult> RefreshRatesAsync(Guid userId);
 
     /// <summary>
     /// Open or close participation. Admin only.

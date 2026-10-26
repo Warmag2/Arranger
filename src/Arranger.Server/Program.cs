@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using Faemiyah.Arranger.Data.Entities;
 using Faemiyah.Arranger.Data.Extensions;
+using Faemiyah.Arranger.Grains;
 using Faemiyah.Arranger.Server.Authentication;
 using Faemiyah.Arranger.Server.Components;
 using Faemiyah.Arranger.Server.Endpoints;
@@ -24,6 +25,7 @@ builder.Services.ConfigureArrangerJson();
 builder.Services.AddArrangerData(builder.Configuration);
 builder.Services.AddArrangerProxyAndRateLimiting(builder.Configuration);
 builder.Services.AddArrangerRealtime();
+builder.Services.AddArrangerCurrencyRates();
 builder.Services.AddSingleton<TimeZoneCatalog>();
 builder.Services.AddProblemDetails();
 

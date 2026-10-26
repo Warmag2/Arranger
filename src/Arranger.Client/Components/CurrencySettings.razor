@@ -3,7 +3,7 @@
 @{
     var me = Snapshot.FindMember(UserId);
     var isAdmin = me?.IsAdmin == true;
-    var canEditRates = me != null && !Snapshot.IsExpensesDisabled;
+    var canManageCurrencies = isAdmin && !Snapshot.IsExpensesDisabled;
     var baseCurrency = Snapshot.BaseCurrency;
     var shown = Snapshot.Expenses.Select(e => e.Currency)
         .Concat(Snapshot.ExchangeRates.Keys)
@@ -28,33 +28,42 @@
         var isUsed = Snapshot.Expenses.Any(e => e.Currency == currency);
         <div class="form form-group">
             <label class="label-text" for="rate-@currency">1 @baseCurrency =</label>
-            <input id="rate-@currency" class="form-number" type="number" min="0" step="any" disabled="@(!canEditRates || Busy)"
+            <input id="rate-@currency" class="form-number" type="number" min="0" step="any" disabled="@(!canManageCurrencies || Busy)"
                    value="@Number(rate?.Rate)" @onchange="e => SetRateAsync(currency, Parse(e.Value), rate?.LossPercent ?? 0)" />
             <span class="form-group-text">@currency</span>
             <label class="label-text" for="loss-@currency" title="Average loss on converting to @currency">loss</label>
             <input id="loss-@currency" class="form-number" type="number" min="0" max="@ExpenseRules.MaxLossPercent" step="any"
-                   disabled="@(!canEditRates || Busy)" value="@Number(rate?.LossPercent ?? 0)"
+                   disabled="@(!canManageCurrencies || Busy)" value="@Number(rate?.LossPercent ?? 0)"
                    @onchange="e => SetRateAsync(currency, rate?.Rate, Parse(e.Value) ?? 0)" />
             <span class="form-group-text">%</span>
-            <button class="button button-delete" type="button" disabled="@(!canEditRates || Busy || isUsed || rate == null)"
+            <button class="button button-delete" type="button" disabled="@(!canManageCurrencies || Busy || isUsed || rate == null)"
                     title="@(isUsed ? "Used by expenses" : "Remove the currency")" aria-label="Remove @currency"
                     @onclick="() => RemoveAsync(currency)">×</button>
         </div>
     }
 
-    @if (canEditRates)
+    @if (canManageCurrencies)
     {
         <div class="form form-select">
             <label class="label-text">Add a currency</label>
             <FormComboBox TItem="string" Options="@AddableCurrencyOptions(shown, baseCurrency)" OnChanged="AddAsync" />
         </div>
+        @if (shown.Count > 0)
+        {
+            <div class="form">
+                <button class="button" type="button" disabled="@Busy" @onclick="RefreshRatesAsync">Refresh rates</button>
+            </div>
+        }
     }
 
     <p class="secondary">
-        Expenses can be recorded in the base currency and the currencies added here. Balances are shown in the base
-        currency once every currency used has a rate; only admins change the base currency, which clears the rates.
-        A currency can be removed while no expense uses it. The loss is what you lose on average when converting
-        to the currency, for example in exchange fees: you get that much less of it for your money.
+        Expenses can be recorded in the base currency or in any of the currencies added here. Balances are shown in the base
+        currency once the currency used has a conversion rate. Changing the base currency, clears the rates and a newly added
+        currency starts at the latest fetched market rate. Rates can be refreshed to match the latest daily rate.
+        A currency can be removed while no expense uses it. The loss is the average conversion loss for a person when paying
+        in a foreign currency (may be 0).
+        <br />
+        Admin only.
     </p>
 </section>
 
@@ -116,6 +125,12 @@
     private async Task RemoveAsync(string code)
     {
         await Run(HttpMethod.Delete, $"rates/{code}", null);
+        attempts++;
+    }
+
+    private async Task RefreshRatesAsync()
+    {
+        await Run(HttpMethod.Post, "rates/refresh", null);
         attempts++;
     }
 

@@ -18,8 +18,7 @@
         }
         else
         {
-            var (day, time) = ScheduleFormat.Describe(final, CurrentUser.TimeZone);
-            <span>The time is <strong>@day @time</strong>.</span>
+            <span>The time is <strong>@ScheduleFormat.DescribeInline(final, CurrentUser.TimeZone)</strong>.</span>
         }
         @if (isAdmin)
         {
@@ -38,8 +37,7 @@ else if (final != null || isAdmin)
     <div>
         @if (final != null)
         {
-            var (day, time) = ScheduleFormat.Describe(final, CurrentUser.TimeZone);
-            <p>Picked: <strong>@day @time</strong></p>
+            <p>Picked: <strong>@ScheduleFormat.DescribeInline(final, CurrentUser.TimeZone)</strong></p>
         }
         else
         {
@@ -61,10 +59,22 @@ else
                     <th scope="col"></th>
                     @foreach (var option in Snapshot.TimeOptions)
                     {
-                        var (day, time) = ScheduleFormat.Describe(option, CurrentUser.TimeZone);
                         <th scope="col" class="@FinalClass(option)">
-                            <div>@day</div>
-                            <small>@time</small>
+                            @foreach (var line in ScheduleFormat.Describe(option, CurrentUser.TimeZone))
+                            {
+                                @if (line.Date is null)
+                                {
+                                    <small>@line.Time</small>
+                                }
+                                else if (line.Time is null)
+                                {
+                                    <div>@line.Date</div>
+                                }
+                                else
+                                {
+                                    <div>@line.Date <small>@line.Time</small></div>
+                                }
+                            }
                         </th>
                     }
                 </tr>

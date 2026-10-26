@@ -104,10 +104,9 @@
                        @onchange="e => SetTabsAsync(!Snapshot.IsScheduleDisabled, (bool)e.Value!)" />
                 <label for="expenses-enabled">Expenses enabled</label>
             </div>
-        </div>
-
-        <div class="form">
-            A disabled tab stays visible but cannot be changed. Disabling the schedule closes the poll and confirms the picked time.
+            <p class="secondary">
+                A disabled tab stays visible but cannot be changed. Disabling the schedule closes the poll and confirms the picked time.
+            </p>
         </div>
 
         <form @onsubmit="UpdateDetailsAsync">
@@ -140,7 +139,11 @@ else if (me != null)
 {
     <section>
         <button class="button button-delete" disabled="@Busy" @onclick="LeaveAsync">Leave arrangement</button>
-        <p class="secondary">Any schedule votes will be removed.<br />If you have paid or shared an expense, you cannot leave and the your participation remains recorded.</p>
+        <p class="secondary">
+            When leaving, all of your schedule votes will be removed.
+            <br />
+            If you have paid or shared an expense, you cannot leave and your participation remains recorded.
+        </p>
     </section>
 }
 

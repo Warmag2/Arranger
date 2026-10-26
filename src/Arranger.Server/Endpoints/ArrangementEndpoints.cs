@@ -49,6 +49,7 @@ public static class ArrangementEndpoints
         group.MapPut("/{id:guid}/base-currency", SetBaseCurrencyAsync);
         group.MapPut("/{id:guid}/rates/{currency}", SetExchangeRateAsync);
         group.MapDelete("/{id:guid}/rates/{currency}", RemoveCurrencyAsync);
+        group.MapPost("/{id:guid}/rates/refresh", RefreshRatesAsync);
         return group;
     }
 
@@ -158,6 +159,11 @@ public static class ArrangementEndpoints
     private static async Task<IResult> RemoveCurrencyAsync(Guid id, string currency, ClaimsPrincipal user, IGrainFactory grains)
     {
         return (await Grain(grains, id).RemoveCurrencyAsync(user.GetRequiredUserId(), currency)).ToHttpResult();
+    }
+
+    private static async Task<IResult> RefreshRatesAsync(Guid id, ClaimsPrincipal user, IGrainFactory grains)
+    {
+        return (await Grain(grains, id).RefreshRatesAsync(user.GetRequiredUserId())).ToHttpResult();
     }
 
     private static IArrangementGrain Grain(IGrainFactory grains, Guid id)

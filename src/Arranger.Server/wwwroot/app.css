@@ -24,24 +24,14 @@
     /* Links */
     --color_link: #006BB7;
     --color_link_inverse: #E0E0E8; /* Dark backgrounds */
-    /* Misc */
-    --color_checkbox_border: #929292;
-    --color_avatar_bg: #dddddd;
     /* Forms */
-    --color_input_bg: #FFFFFF;
+    --color_checkbox_border: #929292;
     --color_badge_admin: #6A527A;
     --color_badge_member: #6A6A6A;
     --color_badge_owner: #6A7A52;
+    --color_input_bg: #FFFFFF;
     /* Status (success/warning text pairs with their backgrounds; the positive
        and negative backgrounds double as the schedule vote and balance colors) */
-    /* old ones:
-    --color_positive_text: #26B050;
-    --color_positive_bg: #A3CFBB;
-    --color_negative_text: #B32121;
-    --color_negative_bg: #F1AEB5;
-    --color_warning_bg: #FFE69C;
-    --color_warning_text: #533F03;
-    */
     --color_positive_text: #065010;
     --color_positive_bg: #A3CFBB;
     --color_negative_text: #B32121;
@@ -235,7 +225,6 @@ div.navigation-item a.active {
     border-radius: 15%;
     object-fit: cover;
     vertical-align: middle;
-    background: var(--color_avatar_bg);
 }
 
 /*******************************************************************************

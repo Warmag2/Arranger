@@ -25,6 +25,7 @@ public class ArrangementGrainTests
     private static readonly DateTime Evening = new(2026, 6, 19, 0, 0, 0, DateTimeKind.Utc);
 
     private readonly RecordingNotifier _notifier = new();
+    private readonly FakeCurrencyRateProvider _rateProvider = new();
     private InProcessTestCluster _cluster = null!;
     private IEntityRepositoryWithUuid<long, User> _users = null!;
     private IEntityRepositoryWithUuid<long, Arrangement> _arrangements = null!;
@@ -45,6 +46,7 @@ public class ArrangementGrainTests
             host.Configuration.AddInMemoryCollection(settings);
             host.Services.AddArrangerData(host.Configuration);
             host.Services.AddSingleton<IArrangementNotifier>(_notifier);
+            host.Services.AddSingleton<ICurrencyRateProvider>(_rateProvider);
         });
 
         _cluster = builder.Build();
@@ -58,6 +60,12 @@ public class ArrangementGrainTests
     public async Task StopClusterAsync()
     {
         await _cluster.DisposeAsync();
+    }
+
+    [SetUp]
+    public void ResetRateProvider()
+    {
+        _rateProvider.Rates.Clear();
     }
 
     [Test]
@@ -517,19 +525,21 @@ public class ArrangementGrainTests
         var grain = await CreateAsync(owner);
         await grain.JoinAsync(member);
 
-        (await grain.SetExchangeRateAsync(member, "SEK", new(1))).Error.Should().Be(CommandError.Invalid);
-        (await grain.SetExchangeRateAsync(member, "EUR", new(0))).Error.Should().Be(CommandError.Invalid);
-        (await grain.SetExchangeRateAsync(member, "EUR", new(11.5m, 50.01m))).Error.Should().Be(CommandError.Invalid);
-        (await grain.SetExchangeRateAsync(member, "EUR", new(11.5m))).Snapshot!.ExchangeRates.Should().Equal(new Dictionary<string, ExchangeRateSnapshot> { ["EUR"] = new(11.5m, 0) });
-        var updated = (await grain.SetExchangeRateAsync(member, "EUR", new(11.25m, 2.5m))).Snapshot!;
-        (await grain.SetExchangeRateAsync(member, "EUR", new(11.25m, 2.5m))).Snapshot!.Version.Should().Be(updated.Version);
-        await grain.SetExchangeRateAsync(member, "USD", new(10));
+        (await grain.SetExchangeRateAsync(member, "EUR", new(11.5m))).Error.Should().Be(CommandError.Forbidden);
+        (await grain.SetExchangeRateAsync(owner, "SEK", new(1))).Error.Should().Be(CommandError.Invalid);
+        (await grain.SetExchangeRateAsync(owner, "EUR", new(0))).Error.Should().Be(CommandError.Invalid);
+        (await grain.SetExchangeRateAsync(owner, "EUR", new(11.5m, 50.01m))).Error.Should().Be(CommandError.Invalid);
+        (await grain.SetExchangeRateAsync(owner, "EUR", new(11.5m))).Snapshot!.ExchangeRates.Should().Equal(new Dictionary<string, ExchangeRateSnapshot> { ["EUR"] = new(11.5m, 0) });
+        var updated = (await grain.SetExchangeRateAsync(owner, "EUR", new(11.25m, 2.5m))).Snapshot!;
+        (await grain.SetExchangeRateAsync(owner, "EUR", new(11.25m, 2.5m))).Snapshot!.Version.Should().Be(updated.Version);
+        await grain.SetExchangeRateAsync(owner, "USD", new(10));
 
         await _cluster.DeactivateAsync(grain);
         (await grain.GetSnapshotAsync(owner)).Snapshot!.ExchangeRates.Should().BeEquivalentTo(
             new Dictionary<string, ExchangeRateSnapshot> { ["EUR"] = new(11.25m, 2.5m), ["USD"] = new(10, 0) });
-        (await grain.SetExchangeRateAsync(member, "USD", new(null))).Snapshot!.ExchangeRates["USD"].Should().Be(new ExchangeRateSnapshot(null, 0));
-        (await grain.RemoveCurrencyAsync(member, "USD")).Snapshot!.ExchangeRates.Keys.Should().Equal("EUR");
+        (await grain.SetExchangeRateAsync(owner, "USD", new(null))).Snapshot!.ExchangeRates["USD"].Should().Be(new ExchangeRateSnapshot(null, 0));
+        (await grain.RemoveCurrencyAsync(member, "USD")).Error.Should().Be(CommandError.Forbidden);
+        (await grain.RemoveCurrencyAsync(owner, "USD")).Snapshot!.ExchangeRates.Keys.Should().Equal("EUR");
 
         (await grain.SetBaseCurrencyAsync(member, "EUR")).Error.Should().Be(CommandError.Forbidden);
         (await grain.SetBaseCurrencyAsync(owner, "XXX")).Error.Should().Be(CommandError.Invalid);
@@ -544,6 +554,43 @@ public class ArrangementGrainTests
 
         await grain.SetTabsAsync(owner, new SetTabsRequest(true, false));
         (await grain.SetExchangeRateAsync(owner, "SEK", new(0.09m))).Error.Should().Be(CommandError.Forbidden);
+    }
+
+    [Test]
+    public async Task SetExchangeRate_SeedsANewCurrencyWithTheLatestMarketRate()
+    {
+        var owner = await AddUserAsync("Owner");
+        var grain = await CreateAsync(owner);
+        _rateProvider.Rates["USD"] = 0.095m;
+
+        // Added without a rate, the currency starts at the market rate.
+        (await grain.SetExchangeRateAsync(owner, "USD", new(null))).Snapshot!.ExchangeRates["USD"].Should().Be(new ExchangeRateSnapshot(0.095m, 0));
+
+        // An explicit rate is kept rather than overwritten by the market rate.
+        _rateProvider.Rates["EUR"] = 0.087m;
+        (await grain.SetExchangeRateAsync(owner, "EUR", new(0.1m))).Snapshot!.ExchangeRates["EUR"].Should().Be(new ExchangeRateSnapshot(0.1m, 0));
+    }
+
+    [Test]
+    public async Task RefreshRates_UpdatesEveryRateFromTheMarketForAdminsOnly()
+    {
+        var owner = await AddUserAsync("Owner");
+        var member = await AddUserAsync("Member");
+        var grain = await CreateAsync(owner);
+        await grain.JoinAsync(member);
+        await grain.SetExchangeRateAsync(owner, "USD", new(0.09m, 1.5m));
+        await grain.SetExchangeRateAsync(owner, "EUR", new(0.1m));
+
+        (await grain.RefreshRatesAsync(member)).Error.Should().Be(CommandError.Forbidden);
+
+        _rateProvider.Rates["USD"] = 0.095m;
+        _rateProvider.Rates["EUR"] = 0.087m;
+        var refreshed = (await grain.RefreshRatesAsync(owner)).Snapshot!;
+
+        // Each rate follows the market while its conversion loss is kept, and a refresh forces fresh market data.
+        refreshed.ExchangeRates["USD"].Should().Be(new ExchangeRateSnapshot(0.095m, 1.5m));
+        refreshed.ExchangeRates["EUR"].Should().Be(new ExchangeRateSnapshot(0.087m, 0));
+        _rateProvider.LastForceRefresh.Should().BeTrue();
     }
 
     [Test]

@@ -35,6 +35,7 @@ public sealed class ArrangementGrain : Grain, IArrangementGrain
     private readonly IEntityRepository<long, ExchangeRate> _rates;
     private readonly UserQueries _userQueries;
     private readonly IArrangementNotifier _notifier;
+    private readonly ICurrencyRateProvider _rateProvider;
     private readonly TimeProvider _timeProvider;
     private readonly ArrangementState _state = new();
 
@@ -50,6 +51,7 @@ public sealed class ArrangementGrain : Grain, IArrangementGrain
     /// <param name="rates">The exchange rate repository.</param>
     /// <param name="userQueries">The user queries.</param>
     /// <param name="notifier">Tells clients about changes.</param>
+    /// <param name="rateProvider">The market exchange rate cache.</param>
     /// <param name="timeProvider">The time provider.</param>
     public ArrangementGrain(
         ILogger<ArrangementGrain> logger,
@@ -61,6 +63,7 @@ public sealed class ArrangementGrain : Grain, IArrangementGrain
         IEntityRepository<long, ExchangeRate> rates,
         UserQueries userQueries,
         IArrangementNotifier notifier,
+        ICurrencyRateProvider rateProvider,
         TimeProvider timeProvider)
     {
         _logger = logger;
@@ -72,6 +75,7 @@ public sealed class ArrangementGrain : Grain, IArrangementGrain
         _rates = rates;
         _userQueries = userQueries;
         _notifier = notifier;
+        _rateProvider = rateProvider;
         _timeProvider = timeProvider;
     }
 
@@ -638,9 +642,14 @@ public sealed class ArrangementGrain : Grain, IArrangementGrain
     public async Task<CommandResult> SetExchangeRateAsync(Guid userId, string currency, SetExchangeRateRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
-        if (_state.CheckExpensesEnabled(userId) is { } denied)
+        if (_state.CheckAdmin(userId) is { } denied)
         {
             return denied;
+        }
+
+        if (_state.CheckExpensesEnabled(userId) is { } expensesDenied)
+        {
+            return expensesDenied;
         }
 
         if (!Currencies.IsKnown(currency) || currency == _state.Arrangement.BaseCurrency)
@@ -648,13 +657,21 @@ public sealed class ArrangementGrain : Grain, IArrangementGrain
             return CommandResult.Failure(CommandError.Invalid, "Choose a known currency other than the base currency.");
         }
 
+        var existing = _state.FindExchangeRate(currency);
+
         var rate = request.Rate;
+
+        // A currency added without a rate is seeded with the latest market rate when one is available.
+        if (existing == null && rate == null)
+        {
+            rate = await SuggestRateAsync(currency);
+        }
+
         if (((rate is { } value ? ExpenseRules.ValidateRate(value) : null) ?? ExpenseRules.ValidateLoss(request.LossPercent)) is { } invalid)
         {
             return CommandResult.Failure(CommandError.Invalid, invalid);
         }
 
-        var existing = _state.FindExchangeRate(currency);
         if (existing != null && existing.Rate == rate && existing.LossPercent == request.LossPercent)
         {
             return _state.Current();
@@ -678,9 +695,14 @@ public sealed class ArrangementGrain : Grain, IArrangementGrain
     /// <inheritdoc />
     public async Task<CommandResult> RemoveCurrencyAsync(Guid userId, string currency)
     {
-        if (_state.CheckExpensesEnabled(userId) is { } denied)
+        if (_state.CheckAdmin(userId) is { } denied)
         {
             return denied;
+        }
+
+        if (_state.CheckExpensesEnabled(userId) is { } expensesDenied)
+        {
+            return expensesDenied;
         }
 
         if (_state.FindExchangeRate(currency) is not { } existing)
@@ -701,6 +723,56 @@ public sealed class ArrangementGrain : Grain, IArrangementGrain
 
         _state.RemoveExchangeRate(currency);
         return await PublishAsync();
+    }
+
+    /// <inheritdoc />
+    public async Task<CommandResult> RefreshRatesAsync(Guid userId)
+    {
+        if (_state.CheckAdmin(userId) is { } denied)
+        {
+            return denied;
+        }
+
+        if (_state.CheckExpensesEnabled(userId) is { } expensesDenied)
+        {
+            return expensesDenied;
+        }
+
+        var currencies = _state.Arrangement.ExchangeRates.ConvertAll(r => r.Currency);
+        if (currencies.Count == 0)
+        {
+            return _state.Current();
+        }
+
+        var arrangementId = _state.Arrangement.Id;
+        var latest = await _rateProvider.GetRatesAsync(_state.Arrangement.BaseCurrency, currencies, forceRefresh: true);
+        var changed = false;
+        foreach (var currency in currencies)
+        {
+            if (!latest.TryGetValue(currency, out var newRate) || _state.FindExchangeRate(currency) is not { } existing || existing.Rate == newRate)
+            {
+                continue;
+            }
+
+            var update = existing.CloneDetails();
+            update.Rate = newRate;
+            var saved = await _rates.AddOrUpdateAsync(update, r => r.ArrangementId == arrangementId && r.Currency == currency);
+            if (!saved.IsSuccess)
+            {
+                return WriteFailed(saved.Status);
+            }
+
+            _state.SetExchangeRate(saved.Value);
+            changed = true;
+        }
+
+        return changed ? await PublishAsync() : _state.Current();
+    }
+
+    private async Task<decimal?> SuggestRateAsync(string currency)
+    {
+        var rates = await _rateProvider.GetRatesAsync(_state.Arrangement.BaseCurrency, [currency], forceRefresh: false);
+        return rates.TryGetValue(currency, out var rate) ? rate : null;
     }
 
     private CommandResult? Fill(Expense expense, ExpenseRequest request)
