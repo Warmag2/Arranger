@@ -143,8 +143,12 @@ else if (canAddTime)
 {
     <form @onsubmit="AddAsync">
         <div class="form">
-            <label for="option-date">Date</label>
+            <label for="option-date">Start date</label>
             <input id="option-date" type="date" @bind="date" />
+        </div>
+        <div class="form">
+            <label for="option-end-date">End date (optional)</label>
+            <input id="option-end-date" type="date" @bind="endDate" />
         </div>
         @if (!isWholeDay)
         {
@@ -174,6 +178,7 @@ else if (canAddTime)
 
 @code {
     private DateOnly date;
+    private DateOnly? endDate;
     private TimeOnly start = new(18, 0);
     private TimeOnly? end;
     private bool isWholeDay;
@@ -264,7 +269,7 @@ else if (canAddTime)
 
     private async Task AddAsync()
     {
-        var request = isWholeDay ? new AddTimeOptionRequest(date.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc), null, true) : CreateTimedRequest();
+        var request = isWholeDay ? CreateWholeDayRequest() : CreateTimedRequest();
         formError = request == null
             ? "That time does not exist in your time zone because of a daylight saving change."
             : ArrangementRules.ValidateTimeOption(request.DateBegin, request.DateEnd, request.IsWholeDay);
@@ -274,14 +279,21 @@ else if (canAddTime)
         }
     }
 
+    private AddTimeOptionRequest CreateWholeDayRequest()
+    {
+        var begin = date.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+        DateTime? endUtc = endDate is { } value && value > date ? value.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc) : null;
+        return new AddTimeOptionRequest(begin, endUtc, true);
+    }
+
     private AddTimeOptionRequest? CreateTimedRequest()
     {
-        // An end at or before the start is on the next day, e.g. 22:00–02:00.
         var begin = CurrentUser.ToUtc(date, start);
         DateTime? endUtc = null;
         if (end is { } endTime)
         {
-            endUtc = CurrentUser.ToUtc(endTime <= start ? date.AddDays(1) : date, endTime);
+            // When no end date is given, the end falls on the start date.
+            endUtc = CurrentUser.ToUtc(endDate ?? date, endTime);
         }
 
         return begin == null || (end != null && endUtc == null) ? null : new AddTimeOptionRequest(begin.Value, endUtc, false);

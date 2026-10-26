@@ -8,9 +8,9 @@ namespace Faemiyah.Arranger.Contracts.Arrangements;
 /// A proposed time in the schedule poll.
 /// </summary>
 /// <param name="Id">The option ID.</param>
-/// <param name="DateBegin">The start in UTC. For a whole-day option, the UTC midnight of the day.</param>
-/// <param name="DateEnd">The end in UTC, or <b>null</b> when open-ended or whole-day.</param>
-/// <param name="IsWholeDay">Whether the option is the UTC date of <paramref name="DateBegin"/>, without a time.</param>
+/// <param name="DateBegin">The start in UTC. For a whole-day option, the UTC midnight of the first day.</param>
+/// <param name="DateEnd">The end in UTC, or <b>null</b> when open-ended or a single whole day. For a multi-day whole-day option, the UTC midnight of the inclusive last day.</param>
+/// <param name="IsWholeDay">Whether the option is a whole UTC date (or range of dates) without a time.</param>
 /// <param name="CreatedByUserId">The user ID of the member who proposed it.</param>
 /// <param name="Votes">The answers, one per member at most.</param>
 public sealed record TimeOptionSnapshot(

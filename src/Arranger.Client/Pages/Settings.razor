@@ -140,21 +140,15 @@ else
         busy = true;
         try
         {
-            var image = await e.File.RequestImageFileAsync("image/jpeg", ProfilePictureRules.UploadDimension, ProfilePictureRules.UploadDimension);
-            if (image.Size > ProfilePictureRules.MaxBytes)
+            var picture = await PrepareUploadAsync(e.File);
+            if (picture == null)
             {
                 error = $"The picture must be at most {ProfilePictureRules.MaxBytes / 1024} KiB.";
                 return;
             }
 
-            var bytes = new byte[image.Size];
-            await using (var stream = image.OpenReadStream(ProfilePictureRules.MaxBytes))
-            {
-                await stream.ReadExactlyAsync(bytes);
-            }
-
-            using var content = new ByteArrayContent(bytes);
-            content.Headers.ContentType = new MediaTypeHeaderValue(image.ContentType);
+            using var content = new ByteArrayContent(picture.Value.Bytes);
+            content.Headers.ContentType = new MediaTypeHeaderValue(picture.Value.ContentType);
             error = await Api.SendAsync(HttpMethod.Put, "api/me/picture", content);
             if (error == null)
             {
@@ -165,6 +159,29 @@ else
         {
             busy = false;
         }
+    }
+
+    private static async Task<(byte[] Bytes, string ContentType)?> PrepareUploadAsync(IBrowserFile file)
+    {
+        // A picture that is already an accepted format and within the size limit is uploaded as-is, keeping its exact
+        // quality and any transparency. A larger one (or another format) is scaled down and re-encoded instead.
+        if (file.ContentType is "image/png" or "image/jpeg" or "image/webp" && file.Size <= ProfilePictureRules.MaxBytes)
+        {
+            return (await ReadBytesAsync(file), file.ContentType);
+        }
+
+        // WebP and PNG keep an alpha channel, so re-encode them back to themselves; everything else becomes JPEG.
+        var format = file.ContentType is "image/png" or "image/webp" ? file.ContentType : "image/jpeg";
+        var image = await file.RequestImageFileAsync(format, ProfilePictureRules.UploadDimension, ProfilePictureRules.UploadDimension);
+        return image.Size > ProfilePictureRules.MaxBytes ? null : (await ReadBytesAsync(image), image.ContentType);
+    }
+
+    private static async Task<byte[]> ReadBytesAsync(IBrowserFile file)
+    {
+        var bytes = new byte[file.Size];
+        await using var stream = file.OpenReadStream(ProfilePictureRules.MaxBytes);
+        await stream.ReadExactlyAsync(bytes);
+        return bytes;
     }
 
     private async Task DeletePictureAsync()
