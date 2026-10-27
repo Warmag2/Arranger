@@ -258,35 +258,28 @@ div.navigation-item a.active {
 .button-submit {
     color: var(--fui-color-text-selected);
     background-color: var(--fui-color-bg-selected);
-    border-color: var(--fui-color-text-unselected);
 }
 
 .button-submit:hover:not(:disabled) {
     background-color: var(--color_navigation_bg_hover);
-    border-color: var(--color_navigation_text_hover);
 }
 
 .button-delete {
-    color: var(--fui-color-text-unselected);
     background-color: var(--color_negative_bg);
-    border-color: var(--fui-color-text-unselected);
 }
 
 .button-delete:hover:not(:disabled) {
     color: var(--fui-color-text-selected);
     background-color: var(--color_negative_text);
-    border-color: var(--fui-color-text-unselected);
 }
 
 .button[aria-pressed="true"] {
     color: var(--fui-color-text-selected);
     background-color: var(--fui-color-bg-selected);
-    border-color: var(--fui-color-text-unselected);
 }
 
 .button[aria-pressed="true"]:hover:not(:disabled) {
     background-color: var(--color_navigation_bg_hover);
-    border-color: var(--color_navigation_text_hover);
 }
 
 /*******************************************************************************
