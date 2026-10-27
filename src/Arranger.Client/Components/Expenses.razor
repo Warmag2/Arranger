@@ -14,6 +14,9 @@
     var spent = isInBase
         ? new Dictionary<string, IReadOnlyDictionary<Guid, decimal>> { [baseCurrency] = ExpenseMath.InBaseCurrency(ExpenseMath.Spent(Snapshot.Expenses), baseCurrency, Snapshot.ExchangeRates) }
         : ExpenseMath.Spent(Snapshot.Expenses).ToDictionary(b => b.Key, b => (IReadOnlyDictionary<Guid, decimal>)b.Value);
+    var received = isInBase
+        ? new Dictionary<string, IReadOnlyDictionary<Guid, decimal>> { [baseCurrency] = ExpenseMath.InBaseCurrency(ExpenseMath.Received(Snapshot.Expenses), baseCurrency, Snapshot.ExchangeRates) }
+        : ExpenseMath.Received(Snapshot.Expenses).ToDictionary(b => b.Key, b => (IReadOnlyDictionary<Guid, decimal>)b.Value);
     var payments = balances.SelectMany(b => ExpenseMath.SuggestPayments(b.Value, b.Key, Today())).ToList();
 }
 
@@ -52,6 +55,12 @@
         </div>
         <div class="form">
             <label>@(isPayment ? "Paid to" : "Shared by")</label>
+            @{
+                var allSelected = participants.Count == Snapshot.Members.Count;
+            }
+            <div class="form-submit">
+                <button type="button" class="button" @onclick="ToggleAll">@(allSelected ? "None" : "All")</button>
+            </div>
             <div class="form-submit">
                 @foreach (var member in Snapshot.Members)
                 {
@@ -62,7 +71,7 @@
         </div>
         <div class="form form-switch">
             <input id="expense-payment" type="checkbox" @bind="isPayment" />
-            <label for="expense-payment">Payment to another member</label>
+            <label for="expense-payment">Payment is part of final settlement (visual distinction)</label>
         </div>
         <div class="form-submit">
             <button type="submit" class="button button-submit" disabled="@Busy">@(editingId == null ? "Add" : "Save")</button>
@@ -170,13 +179,14 @@ else
                 <tbody>
                     @foreach (var member in Snapshot.Members.Where(m => users.ContainsKey(m.UserId)))
                     {
-                        // Received is derived so the rounded columns always add up.
+                        // Spent and received are counted independently; their difference is the balance (double bookkeeping).
                         var balance = users[member.UserId];
                         var paid = spent[code].GetValueOrDefault(member.UserId);
+                        var gained = received[code].GetValueOrDefault(member.UserId);
                         <tr>
                             <td>@member.UserName</td>
                             <td class="number">@Money(paid, code)</td>
-                            <td class="number">@Money(paid - balance, code)</td>
+                            <td class="number">@Money(gained, code)</td>
                             <td class="number @BalanceClass(balance)">@Money(balance, code)</td>
                         </tr>
                     }
@@ -295,7 +305,7 @@ else
 
     private void Open(ExpenseSnapshot? expense)
     {
-        // A new expense: the currency of the last one added if still available, paid by me, shared by everyone.
+        // A new expense: the currency of the last one added if still available, paid by me, benefitted only by me by default.
         var available = Snapshot.AvailableCurrencies();
         var last = Snapshot.Expenses.Where(e => available.Contains(e.Currency)).MaxBy(e => e.Id);
         editingId = expense?.Id;
@@ -305,7 +315,7 @@ else
         paidBy = expense?.PaidByUserId ?? UserId;
         date = expense?.Date ?? Today();
         isPayment = expense?.IsSettlementPayment ?? false;
-        participants = (expense?.ParticipantUserIds ?? Snapshot.Members.Select(m => m.UserId)).ToHashSet();
+        participants = (expense?.ParticipantUserIds ?? new[] { UserId }).ToHashSet();
         formError = null;
         isFormOpen = true;
     }
@@ -315,6 +325,18 @@ else
         if (!participants.Remove(userId))
         {
             participants.Add(userId);
+        }
+    }
+
+    private void ToggleAll()
+    {
+        if (participants.Count == Snapshot.Members.Count)
+        {
+            participants.Clear();
+        }
+        else
+        {
+            participants = Snapshot.Members.Select(m => m.UserId).ToHashSet();
         }
     }
 

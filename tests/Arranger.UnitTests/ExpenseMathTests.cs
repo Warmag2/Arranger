@@ -140,6 +140,36 @@ public class ExpenseMathTests
         ExpenseRules.Validate(request with { Currency = "XXX" }).Should().NotBeNull();
     }
 
+    [Test]
+    public void Received_AreSharesPerCurrency_AndSpentMinusReceivedIsTheBalance()
+    {
+        var expenses = new[] { Expense(30, "EUR", A, A, B, C), Expense(10, "EUR", B, A), Expense(900, "JPY", C, C, D) };
+        var received = ExpenseMath.Received(expenses);
+
+        received.Keys.Should().Equal("EUR", "JPY");
+        received["EUR"].Should().BeEquivalentTo(new Dictionary<Guid, decimal> { [A] = 20, [B] = 10, [C] = 10 });
+        received["JPY"].Should().BeEquivalentTo(new Dictionary<Guid, decimal> { [C] = 450, [D] = 450 });
+
+        var spent = ExpenseMath.Spent(expenses);
+        var balances = ExpenseMath.Balances(expenses);
+        foreach (var (currency, users) in balances)
+        {
+            foreach (var (userId, balance) in users)
+            {
+                (spent[currency].GetValueOrDefault(userId) - received[currency].GetValueOrDefault(userId)).Should().Be(balance);
+            }
+        }
+    }
+
+    [Test]
+    public void Received_ArePaymentsToThem()
+    {
+        // B pays A 10 EUR in settlement, so A received 10 and B paid 10.
+        var received = ExpenseMath.Received([new ExpenseSnapshot(0, "Payment", 10, "EUR", B, [A], Day, true)]);
+
+        received["EUR"].Should().BeEquivalentTo(new Dictionary<Guid, decimal> { [A] = 10 });
+    }
+
     private static ExpenseSnapshot Expense(decimal amount, string currency, Guid paidBy, params Guid[] participants)
     {
         return new ExpenseSnapshot(0, "Test", amount, currency, paidBy, participants.Distinct().ToList(), Day, false);

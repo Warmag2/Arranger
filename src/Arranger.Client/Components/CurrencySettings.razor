@@ -31,11 +31,10 @@
             <input id="rate-@currency" class="form-number" type="number" min="0" step="any" disabled="@(!canManageCurrencies || Busy)"
                    value="@Number(rate?.Rate)" @onchange="e => SetRateAsync(currency, Parse(e.Value), rate?.LossPercent ?? 0)" />
             <span class="form-group-text">@currency</span>
-            <label class="label-text" for="loss-@currency" title="Average loss on converting to @currency">loss</label>
             <input id="loss-@currency" class="form-number" type="number" min="0" max="@ExpenseRules.MaxLossPercent" step="any"
                    disabled="@(!canManageCurrencies || Busy)" value="@Number(rate?.LossPercent ?? 0)"
                    @onchange="e => SetRateAsync(currency, rate?.Rate, Parse(e.Value) ?? 0)" />
-            <span class="form-group-text">%</span>
+            <label class="label-text" for="loss-@currency" title="Average loss on converting to @currency">% loss</label>
             <button class="button button-delete" type="button" disabled="@(!canManageCurrencies || Busy || isUsed || rate == null)"
                     title="@(isUsed ? "Used by expenses" : "Remove the currency")" aria-label="Remove @currency"
                     @onclick="() => RemoveAsync(currency)">×</button>

@@ -109,7 +109,7 @@ public static class ExpenseRules
         var participants = request.ParticipantUserIds;
         if (participants is not { Count: > 0 } || participants.Distinct().Count() != participants.Count)
         {
-            return "Choose who shares the expense, each once.";
+            return "Choose which members share the expense. At least one member must be selected.";
         }
 
         return request.IsSettlementPayment && (participants.Count != 1 || participants[0] == request.PaidByUserId)

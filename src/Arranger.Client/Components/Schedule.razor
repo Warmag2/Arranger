@@ -41,7 +41,7 @@ else if (final != null || isAdmin)
         }
         else
         {
-            <p>No date selction yet.</p>
+            <p>No date selection yet.</p>
         }
     </div>
 }
@@ -177,7 +177,7 @@ else if (canAddTime)
         </div>
         <div class="form form-submit">
             <button type="submit" class="button button-submit" disabled="@Busy">Add</button>
-            <button type="button" class="button" @onclick="() => adding = false">Done</button>
+            <button type="button" class="button" @onclick="() => adding = false">Cancel</button>
         </div>
     </form>
     @if (formError != null)

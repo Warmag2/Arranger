@@ -69,6 +69,33 @@ public static class ExpenseMath
     }
 
     /// <summary>
+    /// What each user received per currency: their shares of the expenses, payments to them included. A user's balance
+    /// is their <see cref="Spent"/> minus this. Counted independently from the shares to double-check the balances.
+    /// </summary>
+    /// <param name="expenses">The expenses.</param>
+    /// <returns>The received totals by currency and user.</returns>
+    public static IReadOnlyDictionary<string, Dictionary<Guid, decimal>> Received(IEnumerable<ExpenseSnapshot> expenses)
+    {
+        ArgumentNullException.ThrowIfNull(expenses);
+        var received = new SortedDictionary<string, Dictionary<Guid, decimal>>(StringComparer.Ordinal);
+        foreach (var expense in expenses)
+        {
+            if (!received.TryGetValue(expense.Currency, out var users))
+            {
+                users = [];
+                received[expense.Currency] = users;
+            }
+
+            foreach (var (userId, share) in Shares(expense))
+            {
+                users[userId] = users.GetValueOrDefault(userId) + share;
+            }
+        }
+
+        return received;
+    }
+
+    /// <summary>
     /// Payments that settle every balance in its own currency. See <see cref="SuggestPayments(IReadOnlyDictionary{Guid, decimal}, string, DateOnly)"/>.
     /// </summary>
     /// <param name="expenses">The expenses.</param>

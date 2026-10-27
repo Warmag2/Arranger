@@ -263,6 +263,7 @@ div.navigation-item a.active {
 
 .button-submit:hover:not(:disabled) {
     background-color: var(--color_navigation_bg_hover);
+    border-color: var(--color_navigation_text_hover);
 }
 
 .button-delete {
@@ -278,15 +279,14 @@ div.navigation-item a.active {
 }
 
 .button[aria-pressed="true"] {
-    color: var(--fui-color-text-unselected);
+    color: var(--fui-color-text-selected);
+    background-color: var(--fui-color-bg-selected);
     border-color: var(--fui-color-text-unselected);
-    background-color: var(--color_positive_bg);
 }
 
 .button[aria-pressed="true"]:hover:not(:disabled) {
-    color: var(--fui-color-text-selected);
-    border-color: var(--fui-color-text-unselected);
-    background-color: var(--color_positive_text);
+    background-color: var(--color_navigation_bg_hover);
+    border-color: var(--color_navigation_text_hover);
 }
 
 /*******************************************************************************
