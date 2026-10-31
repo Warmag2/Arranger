@@ -7,7 +7,7 @@ services:
     image: arranger:latest
     environment:
       ASPNETCORE_ENVIRONMENT: Release
-      ConnectionStrings__Database: "${CONNECTIONSTRING:?err}"
+      ConnectionStrings__Database: "User ID=${ARRANGER_USER:?err};Password=${ARRANGER_PASSWORD:?err};Host=host.docker.internal;Port=5432;Database=arranger;"
       DataProtectionKeysPath: "/app/dpkeys"
       TZ: "Europe/Helsinki"
     ports:
