@@ -17,8 +17,8 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="Microsoft.Orleans.Serialization.SystemTextJson" Version="10.4.1" />
-    <PackageReference Include="Microsoft.Orleans.Server" Version="10.4.1" />
+    <PackageReference Include="Microsoft.Orleans.Serialization.SystemTextJson" Version="10.4.2" />
+    <PackageReference Include="Microsoft.Orleans.Server" Version="10.4.2" />
   </ItemGroup>
 
 </Project>

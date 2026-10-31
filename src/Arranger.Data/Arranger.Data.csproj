@@ -5,7 +5,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Faemiyah.Repository" Version="0.6.0" />
+    <PackageReference Include="Faemiyah.Repository" Version="0.6.1" />
     <!-- Pinned so that dependent projects get one EF Core version instead of the older ones Faemiyah.Repository and Npgsql bring. -->
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.14" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.14" />
