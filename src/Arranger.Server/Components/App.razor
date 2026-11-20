@@ -9,6 +9,11 @@
     <link rel="stylesheet" href="@Assets["app.css"]" />
     <ImportMap />
     <link rel="icon" type="image/png" href="favicon.png" />
+    <meta property="og:site_name" content="Arranger" />
+    <meta property="og:title" content="Arranger" />
+    <meta property="og:description" content="Arrange events: scheduling, expenses and participant management." />
+    <meta property="og:image" content="@OgImageUrl" />
+    <meta property="og:type" content="website" />
     <HeadOutlet @rendermode="PageRenderMode" />
 </head>
 
@@ -28,4 +33,8 @@
 
     private IComponentRenderMode? PageRenderMode =>
         HttpContext.AcceptsInteractiveRouting() ? InteractiveWebAssemblyWithoutPrerendering : null;
+
+    // Open Graph requires an absolute URL; derived from the request so it follows whatever host the app is served on.
+    private string OgImageUrl =>
+        $"{HttpContext.Request.Scheme}://{HttpContext.Request.Host}{HttpContext.Request.PathBase}/logo_arranger.png";
 }
