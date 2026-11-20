@@ -1,19 +1,22 @@
+name: arranger-dev
+
 services:
-  postgres:
-    image: postgres:17-alpine
+  arrangerpostgres-dev:
+    container_name: arrangerpostgres-dev
+    image: postgres:18-alpine
     environment:
-      POSTGRES_USER: arranger
-      POSTGRES_PASSWORD: arranger
+      POSTGRES_USER: "${ARRANGER_USER:?err}"
+      POSTGRES_PASSWORD: "${ARRANGER_PASSWORD:?err}"
       POSTGRES_DB: arranger
     ports:
       - "5432:5432"
     volumes:
-      - arranger-postgres:/var/lib/postgresql/data
+      - arrangerpostgres-dev:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U arranger"]
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d arranger"]
       interval: 5s
       timeout: 5s
       retries: 10
 
 volumes:
-  arranger-postgres:
+  arrangerpostgres-dev:
