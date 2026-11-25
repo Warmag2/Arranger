@@ -9,6 +9,8 @@ services:
       ASPNETCORE_ENVIRONMENT: Production
       ConnectionStrings__Database: "User ID=${ARRANGER_USER:?err};Password=${ARRANGER_PASSWORD:?err};Host=host.docker.internal;Port=5432;Database=arranger;"
       DataProtectionKeysPath: "/app/dpkeys"
+      # Published ports reach the container from the network gateway, so trust it to forward the client IP and scheme.
+      ReverseProxy__KnownProxies__0: "10.89.249.1"
       TZ: "Europe/Helsinki"
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -27,6 +29,9 @@ services:
 
 networks:
   arrangernet:
-
+    ipam:
+      config:
+        - subnet: 10.89.249.0/24
+          gateway: 10.89.249.1
 volumes:
   arranger-dpkeys:

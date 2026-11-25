@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace Faemiyah.Arranger.Server.Realtime;
 
@@ -56,6 +57,8 @@ public static class RealtimeExtensions
                 && !(Uri.TryCreate(origin, UriKind.Absolute, out var uri)
                     && string.Equals(uri.Authority, context.Request.Host.Value, StringComparison.OrdinalIgnoreCase)))
             {
+                context.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger<ArrangementHub>()
+                    .LogWarning("Refused a hub connection from origin {Origin} to host {Host}. A reverse proxy must keep the original Host header.", origin, context.Request.Host.Value);
                 context.Response.StatusCode = StatusCodes.Status403Forbidden;
                 return Task.CompletedTask;
             }

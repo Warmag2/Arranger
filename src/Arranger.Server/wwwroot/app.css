@@ -23,6 +23,8 @@
     --color-hilite-overlay: #54637260;
     /* Links */
     --color-link: #006BB7;
+    /* Buttons */
+    --color-button-selected-bg: #646464;
     /* Forms */
     --color-badge-admin: #6A527A;
     --color-badge-member: #6A6A6A;
@@ -267,7 +269,7 @@ p {
 
 .button-submit {
     color: var(--fui-color-text-selected);
-    background-color: var(--fui-color-bg-selected);
+    background-color: var(--color-button-selected-bg);
 }
 
 .button-delete {
@@ -281,7 +283,7 @@ p {
 
 .button[aria-pressed="true"] {
     color: var(--fui-color-text-selected);
-    background-color: var(--fui-color-bg-selected);
+    background-color: var(--color-button-selected-bg);
 }
 
 /*******************************************************************************
