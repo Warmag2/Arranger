@@ -23,8 +23,8 @@
     --color-hilite-overlay: #54637260;
     /* Links */
     --color-link: #006BB7;
-    /* Buttons */
-    --color-button-selected-bg: #646464;
+    /* Interaction: pressed and submit buttons, active tabs, checkboxes, selected list items */
+    --color-interaction-bg: #646464;
     /* Forms */
     --color-badge-admin: #6A527A;
     --color-badge-member: #6A6A6A;
@@ -46,7 +46,7 @@
     --fui-color-bg-unselected: #E0E0E0;
     --fui-color-bg-tab-unselected: var(--color-table-header-bg); /* Arranger only; not in Faemiyah.Ui */
     --fui-color-text-unselected: var(--color-content-text);
-    --fui-color-bg-selected: var(--color-navigation-bg);
+    --fui-color-bg-selected: var(--color-interaction-bg);
     --fui-color-text-selected: var(--color-navigation-hilite);
     --fui-color-bg-hover: var(--color-hilite);
     --fui-color-text-hover: var(--color-content-text);
@@ -269,7 +269,7 @@ p {
 
 .button-submit {
     color: var(--fui-color-text-selected);
-    background-color: var(--color-button-selected-bg);
+    background-color: var(--fui-color-bg-selected);
 }
 
 .button-delete {
@@ -283,7 +283,7 @@ p {
 
 .button[aria-pressed="true"] {
     color: var(--fui-color-text-selected);
-    background-color: var(--color-button-selected-bg);
+    background-color: var(--fui-color-bg-selected);
 }
 
 /*******************************************************************************
@@ -314,7 +314,7 @@ input[type="checkbox"] {
     height: 1.1rem;
     margin: 0;
     vertical-align: middle;
-    accent-color: var(--color-navigation-bg);
+    accent-color: var(--fui-color-bg-selected);
 }
 
 .form-switch {
@@ -628,7 +628,7 @@ thead th {
 }
 
 .fui-tab button.fui-active {
-    background-color: var(--color-button-selected-bg);
+    background-color: var(--fui-color-bg-selected);
     color: var(--fui-color-text-selected);
 }
 
