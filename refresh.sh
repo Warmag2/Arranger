@@ -1,4 +1,5 @@
 #!/bin/sh
+set -e
 cd infra
 docker build --tag arranger -f ../src/Arranger.Server/Dockerfile ..
 

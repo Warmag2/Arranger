@@ -15,11 +15,11 @@ both; an unused tab simply stays empty.
 | Atomicity | Each grain command ends in **one** commit: a single repository call, or one `DbContext` + one `SaveChangesAsync()` for the rare multi-row commands. No `TransactionScope` |
 | Realtime | SignalR hub, one group per arrangement. Grain pushes a full snapshot after each successful commit. Clients join the group, then fetch state; on reconnect they rejoin and refetch |
 | Authentication | Own `User` entity + `PasswordHasher<User>` + cookie authentication (no ASP.NET Identity stores), local username + password, no email. Site registration is open, with a configuration switch to close it |
-| User settings | Handle (username), password, profile picture, time zone, default currency |
+| User settings | Username, password, profile picture, time zone, default currency |
 | Access | Invite link `https://arranger.faemiyah.fi/{guid}`. Any logged-in user with the link can view. Joining is open until an admin closes participation |
-| Roles | Members of an arrangement can edit everything in it, including any expense (used among friends). Admins (the creator, plus members the creator promotes) additionally manage the arrangement |
+| Roles | Members of an arrangement vote, add expenses and edit the expenses they paid. Admins (the creator, plus members the creator promotes) additionally manage the arrangement, its times, currencies and any expense |
 | Time options | Stored in UTC, shown in each viewer's own time zone; whole-day options are flagged, start at UTC midnight with no end, and are shown as the UTC date only |
-| Currencies | Expenses recorded in the currency paid. Arrangement has a base currency (initially the creator's default currency) and member-editable exchange rates; settlement converts with those rates. A new expense defaults to the currency of the previous expense. Automatic rates and per-expense rates come later |
+| Currencies | Expenses recorded in the currency paid. Arrangement has a base currency (initially the creator's default currency) and admin-editable exchange rates; settlement converts with those rates. A new expense defaults to the currency of the previous expense. Automatic rates and per-expense rates come later |
 | Transport security | Plain HTTP inside; TLS terminated by the reverse proxy (nginx/Apache) |
 | Deployment | Docker Compose. PostgreSQL either as a container or the host's system instance (connection string only) |
 
@@ -73,12 +73,14 @@ Notes:
 * Generic UI components come from the `Faemiyah.Ui` NuGet package, referenced from `src\Arranger.Client`.
   Before using its inputs for realtime data, make them sync value parameters in `OnParametersSet`
   (most only read them in `OnInitialized`).
-* Tests use NUnit 5, AwesomeAssertions and bUnit for components, as in Faemiyah.Repository and Faemiyah.Ui.
+* The JSON defaults come from the `Faemiyah.Common` NuGet package (referenced from `src\Arranger.Contracts`), and the
+  console log format from `Faemiyah.Common.Hosting` (referenced from `src\Arranger.Server`).
+* Tests use NUnit 5 and AwesomeAssertions, as in Faemiyah.Repository and Faemiyah.Ui.
 * Orleans 10.x (10.4.0 current), .NET 10, Npgsql EF Core 10.
 * Serialization is System.Text.Json everywhere, configured as in BtDamageResolver. Orleans serializes every
   `Faemiyah.Arranger*` type with it (`AddSerializer(s => s.AddJsonSerializer(isSupported: namespace prefix,
   jsonSerializerOptions: CreateJsonSerializerOptions()))`). The HTTP API, SignalR and the WASM client apply the same
-  `JsonConfiguration.ApplyDefaultJsonSerializerOptions` from Contracts: nulls omitted, case-sensitive names, string
+  `JsonConfiguration.ApplyDefaultJsonSerializerOptions` from `Faemiyah.Common`: nulls omitted, case-sensitive names, string
   enums. The API and the client both start from the Web defaults (camelCase), so their property names match.
   No Orleans attributes anywhere, so nothing Orleans-specific reaches the WASM bundle.
 * Render mode: global `InteractiveWebAssemblyRenderMode(prerender: false)`. Prerendering would require server-side
@@ -89,7 +91,7 @@ Notes:
 
 All app entities derive from `EntityBase<long>` (`Id`, `xmin` `ConcurrencyToken`, `UpdateTime`).
 `User` is `EntityBaseWithUuid<long>` like the other entities: foreign keys use the `long` `Id`, and the `Guid`
-`UniqueId` is the only user ID exposed outside the server (claims, API, hub). `UserName` is the visible handle; case is
+`UniqueId` is the only user ID exposed outside the server (claims, API, hub). `UserName` is the visible username; case is
 preserved, but uniqueness and login are case-insensitive via the computed `NormalizedUserName` column.
 
 | Entity | Fields | Constraints |
@@ -113,8 +115,11 @@ preserved, but uniqueness and login are case-insensitive via the computed `Norma
 * Profile pictures are stored in a separate `UserPicture` row (one per user, cascade on user delete), so logins never
   load them. The client scales them to 256 px before upload. The server accepts PNG, JPEG or WebP (checked by file
   signature, never by the claimed type), at most 256 KB, read with a bounded buffer. They are served from
-  `/api/users/{id}/picture` with `Cache-Control: private, no-cache`, an `xmin` ETag and `nosniff`. A user without a
-  picture gets a generated SVG initial with a hue derived from the user ID.
+  `/api/users/{id}/picture?v={version}` with `Cache-Control: private, max-age=31536000, immutable` and `nosniff`
+  (404 without a picture). The version is the picture row's `xmin`, carried in member snapshots and user settings,
+  so a changed picture gets a new URL; uploading or removing a picture refreshes the user's arrangement grains. A
+  user without a picture gets an initial drawn by the client, with a hue derived from the user ID, and no request is
+  made.
 * Balances and settlements are **computed**, never stored.
 * Users live in the same `ArrangerContext` and are accessed only through Faemiyah.Repository repositories, like
   everything else; there is no separate `AddDbContext` registration.
@@ -138,13 +143,15 @@ Reads stay nullable. Callers therefore need no try/catch: e.g. registration maps
 | Grant/revoke admin | 1 member row | repository |
 | Close/reopen participation | 1 arrangement row | repository |
 | Add/remove time option | 1 row (votes cascade) | repository |
+| Remove the picked time option | arrangement row (pick cleared) + option row | `ArrangementRepository.RemovePickedTimeOptionAsync`, one `SaveChangesAsync` |
 | Set vote | 1 row upsert | repository `AddOrUpdateAsync` |
 | Pick a time, enable/disable tabs, edit title | 1 arrangement row | repository |
 | Add expense | expense + participation rows | repository (`AddAsync` inserts the graph) |
 | Edit expense | expense row, participations added/removed | `ExpenseRepository.ReplaceAsync`, one `SaveChangesAsync` |
 | Delete expense | 1 row (participations cascade) | repository |
 | Set/remove exchange rate | 1 row upsert or delete | repository |
-| Change base currency | arrangement row + clear rates | `ArrangementRepository.UpdateClearingRatesAsync`, one `SaveChangesAsync` |
+| Refresh rates | the changed rate rows | `UpdateManyAsync`, one `SaveChangesAsync` |
+| Change base currency | arrangement row + clear rates | `ArrangementRepository.ChangeBaseCurrencyAsync`, one `SaveChangesAsync` |
 | Leave | member row + the member's votes | `ArrangementMemberRepository.DeleteWithVotesAsync`, one `SaveChangesAsync` |
 | Create arrangement | arrangement + owner membership | `DbContext` + one `SaveChangesAsync` |
 
@@ -154,7 +161,7 @@ Reads stay nullable. Callers therefore need no try/catch: e.g. registration maps
 
 ```csharp
 Task<CommandResult> CreateAsync(Guid userId, CreateArrangementRequest request);
-Task<CommandResult> GetSnapshotAsync(Guid userId);
+Task<CommandResult> GetSnapshotAsync();
 Task<CommandResult> JoinAsync(Guid userId);
 Task<CommandResult> LeaveAsync(Guid userId);
 Task<CommandResult> SetParticipationOpenAsync(Guid userId, bool open);
@@ -190,7 +197,7 @@ Task<CommandResult> RemoveCurrencyAsync(Guid userId, string currency); // refuse
 
 ### Lifecycle and command flow
 
-1. `OnActivateAsync`: load the arrangement graph and member handles. If it doesn't exist, the grain stays in a
+1. `OnActivateAsync`: load the arrangement graph and member usernames. If it doesn't exist, the grain stays in a
    "not found" state; only `CreateAsync` succeeds.
 2. Command: authorize → validate → write to the database (one commit) → apply to memory → increment `Version` →
    notify.
@@ -226,10 +233,11 @@ grains, and is allowed per the "grains are the only writers" rule.
 ### User settings
 
 User settings are not arrangement state, so they don't go through grains: the endpoints update them through the
-user repository (one user row per call, `xmin` concurrency check; `Duplicate` means the handle is taken). Snapshots
-carry member IDs and handles; clients load profile pictures by user ID. On a handle change the endpoint reissues the
-cookie (the handle is a claim, so the client reloads) and calls `RefreshMemberAsync` on each of the user's
-arrangement grains, which update the cached handle and notify.
+user repository (one user row per call, `xmin` concurrency check; `Duplicate` means the username is taken). Snapshots
+carry member IDs, usernames and picture versions; clients load profile pictures by user ID and version. On a username
+change the endpoint reissues the cookie (the username is a claim, so the client reloads). On a username or picture
+change it calls `RefreshMemberAsync` on each of the user's arrangement grains, which update the cached profile and
+notify.
 
 ## 6. API and hub
 
@@ -258,7 +266,7 @@ All under `RequireAuthorization()`. JSON only (camelCase, case-sensitive). Error
 | PUT | `/api/arrangements/{id}/base-currency` | `SetBaseCurrencyAsync` |
 | PUT | `/api/arrangements/{id}/rates/{currency}` | `SetExchangeRateAsync` (adds; `null` rate = unknown) |
 | DELETE | `/api/arrangements/{id}/rates/{currency}` | `RemoveCurrencyAsync` |
-| GET / PUT | `/api/me/settings` | User repository (time zone, default currency, handle) |
+| GET / PUT | `/api/me/settings` | User repository (time zone, default currency, username) |
 | PUT / DELETE | `/api/me/picture` | Picture repository (raw image body) |
 | GET | `/api/users/{userId}/picture` | DB read |
 | GET | `/api/time-zones` | IANA zones ordered by current offset (`Etc/*` excluded) |
@@ -289,8 +297,9 @@ a 401 sends the user to the login page. The page shows "Reconnecting…" while n
 | View | any logged-in user with the GUID |
 | Join | any logged-in user, while participation is open |
 | Leave | members except the owner, unless they paid or share any expense; their votes are removed |
-| Add/remove time options, vote (own), add/edit/delete any expense, edit exchange rates | members |
-| Close/reopen participation, enable/disable tabs, pick a time, edit title, change base currency | admins |
+| Vote (own), add expenses, edit/delete the expenses they paid | members |
+| Add/remove time options | admins, or members while "Participants may edit time options" is on |
+| Close/reopen participation, enable/disable tabs, pick a time, edit title, change base currency, manage currencies and exchange rates, edit/delete any expense | admins |
 | Grant/revoke admin, delete arrangement | owner (the owner's admin status cannot be revoked) |
 
 ### Defaults
@@ -332,14 +341,14 @@ a 401 sends the user to the login page. The page shows "Reconnecting…" while n
   tab bar and shows its content read-only; the grain refuses changes.
 * Settings (`ArrangementSettings`, all members): link with a copy button, members (owner promotes admins); admins
   also get the participation and tab switches and the details form; the owner can delete, other members can leave.
-  Currencies (`CurrencySettings`): base currency (admins; confirmed when rates exist; clears the rates, keeps the
-  currencies and adds the old base), then a row ("1 BASE = [rate] X, loss [p] %, ×") per currency added from the
-  "Add a currency" combobox; × is disabled while an expense uses the currency. Editable by members while the expenses are
-  enabled. The expense form only offers the base and the added currencies (plus an edited expense's own), picked with a
+  Currencies (`CurrencySettings`, shown only while the expenses are enabled; admins edit): base currency (confirmed when
+  rates exist; clears the rates, keeps the currencies and adds the old base), then a row ("1 BASE = [rate] X, loss [p] %,
+  ×") per currency added from the "Add a currency" combobox; × is disabled while an expense uses the currency. The
+  expense form only offers the base and the added currencies (plus an edited expense's own), picked with a
   `Faemiyah.Ui` combobox.
 * Schedule (`Schedule` component, formatting in `ScheduleFormat`): options × members grid, options ordered by time.
   Members edit only their own row while the schedule is enabled; tapping a cell cycles none → Yes → Maybe → No → Yes, each
-  tap one `PUT`. The footer shows yes (maybe) counts, a remove button for members (confirmed when the option has
+  tap one `PUT`. The footer shows yes (maybe) counts, a remove button for those who may edit times (confirmed when the option has
   answers) and a Pick toggle for admins. A pick is only a highlighted proposal that everyone sees live; the admin's
   "Close schedule" button (confirmed when nothing is picked) disables the schedule, which confirms the pick and shows
   it in a banner with a Reopen button for admins. The pick survives reopening. "Add time" opens the add form. Timed options are entered and shown in the user's time zone (an end at or before the
@@ -362,8 +371,9 @@ a 401 sends the user to the login page. The page shows "Reconnecting…" while n
 * Authentication: password length 8-128, `PasswordHasher<User>` (rehash on login when needed), optional registration
   switch (`Registration:Enabled`). Each user has a `SecurityStamp` claim, revalidated against the database when the
   cookie is older than 5 minutes; changing the password rotates it and signs out other sessions. `/api` and `/hubs`
-  get 401/403 instead of login redirects.
-* No account lockout (it would let anyone lock out a known handle). Instead, failed logins are logged as
+  get 401/403 instead of login redirects. The hub refuses browser connections whose `Origin` is another host, since
+  WebSockets are not covered by CORS and `SameSite=Lax` sends the cookie from sibling subdomains.
+* No account lockout (it would let anyone lock out a known username). Instead, failed logins are logged as
   `Arranger failed login for user {name} from {ip}` for fail2ban to ban the IP, and the account pages have a per-IP
   rate limit (10 POSTs per minute). The fail2ban filter and jail example go to `docs\` in M6.
 * Known proxies come from `ReverseProxy:KnownProxies` (list of IP addresses).
@@ -372,7 +382,8 @@ a 401 sends the user to the login page. The page shows "Reconnecting…" while n
   amount 0 < x ≤ 10⁹, rate > 0, ISO 4217 currency codes only.
 * Logging with structured `ILogger` to the console as `{UTC time} - [{level}] - {category} - {message}` (as in BtDamageResolver); health endpoint `/healthz`.
 * nginx example config in `docs\` (WebSocket `Upgrade`/`Connection` headers, `proxy_read_timeout` above the SignalR
-  keep-alive, forwarded headers). Apache equivalent uses `mod_proxy_wstunnel`.
+  keep-alive, forwarded headers, and the original `Host` header, which the hub's `Origin` check compares against).
+  Apache equivalent uses `mod_proxy_wstunnel` with `ProxyPreserveHost On`.
 * Deployment: Docker Compose behind the host's reverse proxy. The Compose file includes a PostgreSQL service that
   can be left out in favour of the host's PostgreSQL by changing the connection string.
 

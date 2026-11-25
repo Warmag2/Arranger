@@ -65,6 +65,32 @@ public class ArrangementRepository : RepositoryBaseWithUuid<ArrangerContext, lon
         return await TryUpdateWithContext(dbContext, stored, arrangement, cancellationToken);
     }
 
+    /// <summary>
+    /// Clear the picked time and delete its option in one save, so that the arrangement's revision is known afterwards.
+    /// The database cascades the delete to the votes.
+    /// </summary>
+    /// <param name="arrangement">The arrangement without the pick, with its ID and revision.</param>
+    /// <param name="timeOptionId">The picked time option to delete.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>
+    /// <see cref="OperationStatus.Updated"/> with the arrangement, <see cref="OperationStatus.NotFound"/> when the
+    /// arrangement or the option is missing, or <see cref="OperationStatus.Conflict"/> when the stored revision differs.
+    /// </returns>
+    public async Task<RepositoryResult<Arrangement>> RemovePickedTimeOptionAsync(Arrangement arrangement, long timeOptionId, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(arrangement);
+        await using var dbContext = await DatabaseContextProvider.GetDbContextAsync(cancellationToken: cancellationToken);
+        var stored = await dbContext.Arrangements
+            .Include(a => a.TimeOptions.Where(o => o.Id == timeOptionId))
+            .FirstOrDefaultAsync(a => a.Id == arrangement.Id, cancellationToken);
+        if (stored == null || stored.TimeOptions.RemoveAll(o => o.Id == timeOptionId) == 0)
+        {
+            return RepositoryResult<Arrangement>.Failure(OperationStatus.NotFound);
+        }
+
+        return await TryUpdateWithContext(dbContext, stored, arrangement, cancellationToken);
+    }
+
     /// <inheritdoc />
     protected override IQueryable<Arrangement> ProcessIncludes(DbSet<Arrangement> dbSet)
     {

@@ -1,20 +1,16 @@
 using System;
-using System.Collections.Generic;
-using System.Globalization;
+using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Json;
-using System.Net.Sockets;
-using System.Text.Json;
-using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using AwesomeAssertions;
 using Faemiyah.Arranger.Contracts;
 using Faemiyah.Arranger.Contracts.Arrangements;
+using Faemiyah.Common;
 using Microsoft.AspNetCore.Http.Connections;
-using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.Mvc.Testing.Handlers;
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.Extensions.DependencyInjection;
@@ -23,65 +19,77 @@ using NUnit.Framework;
 namespace Faemiyah.Arranger.IntegrationTests;
 
 [TestFixture]
-public sealed partial class ArrangementHubTests
+public sealed class ArrangementHubTests
 {
-    private static readonly JsonSerializerOptions JsonOptions = CreateJsonOptions();
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);
 
-    private WebApplicationFactory<Program> _factory = null!;
+    private ArrangerApp _app = null!;
 
     [OneTimeSetUp]
     public void StartServer()
     {
-        _factory = new WebApplicationFactory<Program>().WithWebHostBuilder(web =>
-        {
-            web.UseSetting("ConnectionStrings:Database", PostgreSqlFixture.BaseConnectionString);
-            web.UseSetting("Sql:DefaultDbName", "arranger_" + Guid.NewGuid().ToString("N"));
-            web.UseSetting("Orleans:SiloPort", FreePort());
-            web.UseSetting("Orleans:GatewayPort", FreePort());
-        });
+        _app = new ArrangerApp();
     }
 
     [OneTimeTearDown]
     public async Task StopServerAsync()
     {
-        await _factory.DisposeAsync();
+        await _app.DisposeAsync();
     }
 
     [Test]
-    public async Task Subscriber_ReceivesChangesAndDeletion()
+    public async Task Api_BindsRateRouteValueAndBody()
     {
-        var alice = await RegisterAsync("Alice");
-        var bob = await RegisterAsync("Bob");
-        using var aliceHttp = CreateHttpClient(alice);
-        using var bobHttp = CreateHttpClient(bob);
-        var created = await aliceHttp.PostAsJsonAsync("api/arrangements", new CreateArrangementRequest("Hub test", string.Empty), JsonOptions);
-        var arrangement = (await created.Content.ReadFromJsonAsync<ArrangementSnapshot>(JsonOptions))!;
+        using var http = _app.CreateHttpClient(await _app.RegisterAsync("Frank"));
+        var arrangement = await CreateArrangementAsync(http);
 
-        var pushes = Channel.CreateUnbounded<ArrangementSnapshot?>();
-        await using var connection = CreateHubConnection(alice);
-        connection.On<ArrangementSnapshot>(nameof(IArrangementClient.ArrangementChanged), s => pushes.Writer.TryWrite(s));
-        connection.On<Guid>(nameof(IArrangementClient.ArrangementDeleted), _ => pushes.Writer.TryWrite(null));
-        await connection.StartAsync();
-        var subscribed = await connection.InvokeAsync<ArrangementSnapshot?>(ArrangementHubProtocol.Subscribe, arrangement.Id);
-        subscribed!.Members.Should().ContainSingle();
+        var rated = await http.PutAsJsonAsync($"{ApiRoutes.Arrangement(arrangement.Id)}/rates/SEK", new SetExchangeRateRequest(11.5m), ArrangerApp.JsonOptions);
 
-        (await bobHttp.PostAsync($"api/arrangements/{arrangement.Id}/join", null)).StatusCode.Should().Be(HttpStatusCode.OK);
-        var joined = await ReadAsync(pushes);
-        joined!.Members.Should().HaveCount(2);
-        joined.Version.Supersedes(subscribed.Version).Should().BeTrue();
-
-        (await aliceHttp.DeleteAsync($"api/arrangements/{arrangement.Id}")).IsSuccessStatusCode.Should().BeTrue();
-        (await ReadAsync(pushes)).Should().BeNull();
+        (await ArrangerApp.ReadAsync<ArrangementSnapshot>(rated)).ExchangeRates["SEK"].Should().Be(new ExchangeRateSnapshot(11.5m, 0));
     }
 
     [Test]
-    public async Task Subscribe_ToMissingArrangement_ReturnsNull()
+    public async Task Api_BindsVoteRouteValuesAndBody()
     {
-        await using var connection = CreateHubConnection(await RegisterAsync("Carol"));
+        using var http = _app.CreateHttpClient(await _app.RegisterAsync("Grace"));
+        var arrangement = await CreateArrangementAsync(http);
+        var added = await http.PostAsJsonAsync($"{ApiRoutes.Arrangement(arrangement.Id)}/time-options", new AddTimeOptionRequest(new DateTime(2030, 1, 1, 0, 0, 0, DateTimeKind.Utc), null, true), ArrangerApp.JsonOptions);
+        var optionId = (await ArrangerApp.ReadAsync<ArrangementSnapshot>(added)).TimeOptions.Single().Id;
+
+        var voted = await http.PutAsJsonAsync($"{ApiRoutes.Arrangement(arrangement.Id)}/time-options/{optionId}/vote", new SetVoteRequest(VoteAnswer.Maybe), ArrangerApp.JsonOptions);
+
+        (await ArrangerApp.ReadAsync<ArrangementSnapshot>(voted)).TimeOptions.Single().Votes.Single().Answer.Should().Be(VoteAnswer.Maybe);
+    }
+
+    [Test]
+    public async Task Api_CreateReturnsLocation()
+    {
+        using var http = _app.CreateHttpClient(await _app.RegisterAsync("Heidi"));
+
+        var created = await http.PostAsJsonAsync(ApiRoutes.Arrangements, new CreateArrangementRequest("Location test", string.Empty), ArrangerApp.JsonOptions);
+
+        var id = (await ArrangerApp.ReadAsync<ArrangementSnapshot>(created)).Id;
+        created.Headers.Location.Should().Be(new Uri("/" + ApiRoutes.Arrangement(id), UriKind.Relative));
+    }
+
+    [Test]
+    public async Task Connect_FromAnotherOrigin_IsForbidden()
+    {
+        await using var connection = CreateHubConnection(await _app.RegisterAsync("Dave"), "https://sibling.localhost");
+
+        var start = async () => await connection.StartAsync();
+
+        (await start.Should().ThrowAsync<HttpRequestException>()).Which.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    [Test]
+    public async Task Connect_FromOwnOrigin_Succeeds()
+    {
+        await using var connection = CreateHubConnection(await _app.RegisterAsync("Erin"), _app.Server.BaseAddress.GetLeftPart(UriPartial.Authority));
+
         await connection.StartAsync();
 
-        (await connection.InvokeAsync<ArrangementSnapshot?>(ArrangementHubProtocol.Subscribe, Guid.NewGuid())).Should().BeNull();
+        connection.State.Should().Be(HubConnectionState.Connected);
     }
 
     [Test]
@@ -94,18 +102,69 @@ public sealed partial class ArrangementHubTests
         (await start.Should().ThrowAsync<HttpRequestException>()).Which.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
 
-    private static JsonSerializerOptions CreateJsonOptions()
+    [Test]
+    public async Task Subscribe_ReturnsTheCurrentSnapshot()
     {
-        var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
-        JsonConfiguration.ApplyDefaultJsonSerializerOptions(options);
-        return options;
+        var ivan = await _app.RegisterAsync("Ivan");
+        using var http = _app.CreateHttpClient(ivan);
+        var arrangement = await CreateArrangementAsync(http);
+        await using var connection = await ConnectAsync(ivan, Channel.CreateUnbounded<ArrangementSnapshot?>());
+
+        var subscribed = await connection.InvokeAsync<ArrangementSnapshot?>(ArrangementHubProtocol.Subscribe, arrangement.Id);
+
+        subscribed!.Id.Should().Be(arrangement.Id);
+        subscribed.Members.Should().ContainSingle();
     }
 
-    private static string FreePort()
+    [Test]
+    public async Task Subscribe_ToMissingArrangement_ReturnsNull()
     {
-        using var listener = new TcpListener(IPAddress.Loopback, 0);
-        listener.Start();
-        return ((IPEndPoint)listener.LocalEndpoint).Port.ToString(CultureInfo.InvariantCulture);
+        await using var connection = CreateHubConnection(await _app.RegisterAsync("Carol"));
+        await connection.StartAsync();
+
+        var subscribed = await connection.InvokeAsync<ArrangementSnapshot?>(ArrangementHubProtocol.Subscribe, Guid.NewGuid());
+
+        subscribed.Should().BeNull();
+    }
+
+    [Test]
+    public async Task Subscriber_ReceivesChanges()
+    {
+        var alice = await _app.RegisterAsync("Alice");
+        using var aliceHttp = _app.CreateHttpClient(alice);
+        using var bobHttp = _app.CreateHttpClient(await _app.RegisterAsync("Bob"));
+        var arrangement = await CreateArrangementAsync(aliceHttp);
+        var pushes = Channel.CreateUnbounded<ArrangementSnapshot?>();
+        await using var connection = await ConnectAsync(alice, pushes);
+        var subscribed = await connection.InvokeAsync<ArrangementSnapshot?>(ArrangementHubProtocol.Subscribe, arrangement.Id);
+
+        (await bobHttp.PostAsync($"{ApiRoutes.Arrangement(arrangement.Id)}/join", null)).EnsureSuccessStatusCode();
+        var joined = await ReadAsync(pushes);
+
+        joined!.Members.Should().HaveCount(2);
+        joined.Version.Supersedes(subscribed!.Version).Should().BeTrue();
+    }
+
+    [Test]
+    public async Task Subscriber_ReceivesDeletion()
+    {
+        var judy = await _app.RegisterAsync("Judy");
+        using var http = _app.CreateHttpClient(judy);
+        var arrangement = await CreateArrangementAsync(http);
+        var pushes = Channel.CreateUnbounded<ArrangementSnapshot?>();
+        await using var connection = await ConnectAsync(judy, pushes);
+        await connection.InvokeAsync<ArrangementSnapshot?>(ArrangementHubProtocol.Subscribe, arrangement.Id);
+
+        (await http.DeleteAsync(ApiRoutes.Arrangement(arrangement.Id))).EnsureSuccessStatusCode();
+        var deleted = await ReadAsync(pushes);
+
+        deleted.Should().BeNull();
+    }
+
+    private static async Task<ArrangementSnapshot> CreateArrangementAsync(HttpClient http)
+    {
+        var created = await http.PostAsJsonAsync(ApiRoutes.Arrangements, new CreateArrangementRequest("Hub test", string.Empty), ArrangerApp.JsonOptions);
+        return await ArrangerApp.ReadAsync<ArrangementSnapshot>(created);
     }
 
     private static async Task<ArrangementSnapshot?> ReadAsync(Channel<ArrangementSnapshot?> pushes)
@@ -114,43 +173,26 @@ public sealed partial class ArrangementHubTests
         return await pushes.Reader.ReadAsync(cancellation.Token);
     }
 
-    [GeneratedRegex("name=\"__RequestVerificationToken\" value=\"([^\"]+)\"")]
-    private static partial Regex AntiforgeryToken();
-
-    private async Task<CookieContainer> RegisterAsync(string userName)
+    private async Task<HubConnection> ConnectAsync(CookieContainer cookies, Channel<ArrangementSnapshot?> pushes)
     {
-        var cookies = new CookieContainer();
-        using var http = CreateHttpClient(cookies);
-        var page = await http.GetStringAsync("Account/Register");
-        using var form = new FormUrlEncodedContent(new[]
-        {
-            KeyValuePair.Create("_handler", "register"),
-            KeyValuePair.Create("__RequestVerificationToken", AntiforgeryToken().Match(page).Groups[1].Value),
-            KeyValuePair.Create("Input.TimeZoneId", "Europe/Helsinki"),
-            KeyValuePair.Create("Input.UserName", userName),
-            KeyValuePair.Create("Input.Password", "correct horse battery staple"),
-            KeyValuePair.Create("Input.ConfirmPassword", "correct horse battery staple"),
-        });
-
-        var response = await http.PostAsync("Account/Register", form);
-        response.StatusCode.Should().Be(HttpStatusCode.Redirect, await response.Content.ReadAsStringAsync());
-        return cookies;
+        var connection = CreateHubConnection(cookies);
+        connection.On<ArrangementSnapshot>(nameof(IArrangementClient.ArrangementChanged), s => pushes.Writer.TryWrite(s));
+        connection.On<Guid>(nameof(IArrangementClient.ArrangementDeleted), _ => pushes.Writer.TryWrite(null));
+        await connection.StartAsync();
+        return connection;
     }
 
-    private HttpClient CreateHttpClient(CookieContainer cookies)
-    {
-        var http = _factory.CreateDefaultClient(new CookieContainerHandler(cookies));
-        http.DefaultRequestHeaders.Add(ApiHeaders.RequestedWith, ApiHeaders.RequestedWithValue);
-        return http;
-    }
-
-    private HubConnection CreateHubConnection(CookieContainer cookies)
+    private HubConnection CreateHubConnection(CookieContainer cookies, string? origin = null)
     {
         return new HubConnectionBuilder()
-            .WithUrl(new Uri(_factory.Server.BaseAddress, ArrangementHubProtocol.Path), options =>
+            .WithUrl(new Uri(_app.Server.BaseAddress, ArrangementHubProtocol.Path), options =>
             {
                 options.Transports = HttpTransportType.LongPolling;
-                options.HttpMessageHandlerFactory = _ => new CookieContainerHandler(cookies) { InnerHandler = _factory.Server.CreateHandler() };
+                options.HttpMessageHandlerFactory = _ => new CookieContainerHandler(cookies) { InnerHandler = _app.Server.CreateHandler() };
+                if (origin != null)
+                {
+                    options.Headers["Origin"] = origin;
+                }
             })
             .AddJsonProtocol(options => JsonConfiguration.ApplyDefaultJsonSerializerOptions(options.PayloadSerializerOptions))
             .Build();

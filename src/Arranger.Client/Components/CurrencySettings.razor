@@ -1,9 +1,7 @@
+@inherits ArrangementComponentBase
 @inject IJSRuntime JS
 
 @{
-    var me = Snapshot.FindMember(UserId);
-    var isAdmin = me?.IsAdmin == true;
-    var canManageCurrencies = isAdmin && !Snapshot.IsExpensesDisabled;
     var baseCurrency = Snapshot.BaseCurrency;
     var shown = Snapshot.Expenses.Select(e => e.Currency)
         .Concat(Snapshot.ExchangeRates.Keys)
@@ -13,13 +11,16 @@
         .ToList();
 }
 
-<section @key="attempts">
+@* Rebuilt after each save attempt, so that refused values go back to the snapshot, and when the base currency changes,
+   because the combo box reads its value only once. *@
+<section @key="(attempts, Snapshot.BaseCurrency)">
     <h2>
         Currencies
     </h2>
-    <div class="form form-select">
-        <label class="label-text">Base currency</label>
-        <FormComboBox TItem="string" Options="@Currencies.Options()" SelectedOption="@baseCurrency" OnChanged="SetBaseCurrencyAsync" />
+    <div class="form">
+        <label for="base-currency">Base currency</label>
+        <FormComboBox TItem="string" Id="base-currency" Options="@Currencies.Options()" SelectedOption="@baseCurrency" Disabled="@(!IsAdmin || Busy)"
+                      OnChanged="SetBaseCurrencyAsync" />
     </div>
 
     @foreach (var currency in shown)
@@ -27,25 +28,30 @@
         var rate = Snapshot.ExchangeRates.GetValueOrDefault(currency);
         var isUsed = Snapshot.Expenses.Any(e => e.Currency == currency);
         <div class="form form-group">
-            <label class="label-text" for="rate-@currency">1 @baseCurrency =</label>
-            <input id="rate-@currency" class="form-number" type="number" min="0" step="any" disabled="@(!canManageCurrencies || Busy)"
+            <label for="rate-@currency">1 @baseCurrency =</label>
+            <input id="rate-@currency" type="number" min="0" step="any" disabled="@(!IsAdmin || Busy)"
                    value="@Number(rate?.Rate)" @onchange="e => SetRateAsync(currency, Parse(e.Value), rate?.LossPercent ?? 0)" />
-            <span class="form-group-text">@currency</span>
-            <input id="loss-@currency" class="form-number" type="number" min="0" max="@ExpenseRules.MaxLossPercent" step="any"
-                   disabled="@(!canManageCurrencies || Busy)" value="@Number(rate?.LossPercent ?? 0)"
+            <span>@currency</span>
+            <input id="loss-@currency" type="number" min="0" max="@ExpenseRules.MaxLossPercent" step="any"
+                   disabled="@(!IsAdmin || Busy)" value="@Number(rate?.LossPercent ?? 0)"
                    @onchange="e => SetRateAsync(currency, rate?.Rate, Parse(e.Value) ?? 0)" />
-            <label class="label-text" for="loss-@currency" title="Average loss on converting to @currency">% loss</label>
-            <button class="button button-delete" type="button" disabled="@(!canManageCurrencies || Busy || isUsed || rate == null)"
+            <label for="loss-@currency" title="Average loss on converting to @currency">% loss</label>
+            <button class="button button-delete" type="button" disabled="@(!IsAdmin || Busy || isUsed || rate == null)"
                     title="@(isUsed ? "Used by expenses" : "Remove the currency")" aria-label="Remove @currency"
                     @onclick="() => RemoveAsync(currency)">×</button>
         </div>
     }
 
-    @if (canManageCurrencies)
+    @if (rateError != null)
     {
-        <div class="form form-select">
-            <label class="label-text">Add a currency</label>
-            <FormComboBox TItem="string" Options="@AddableCurrencyOptions(shown, baseCurrency)" OnChanged="AddAsync" />
+        <div class="warning">@rateError</div>
+    }
+
+    @if (IsAdmin)
+    {
+        <div class="form">
+            <label for="add-currency">Add a currency</label>
+            <FormComboBox TItem="string" Id="add-currency" Options="@AddableCurrencyOptions(shown, baseCurrency)" Disabled="@Busy" OnChanged="AddAsync" />
         </div>
         @if (shown.Count > 0)
         {
@@ -57,7 +63,7 @@
 
     <p class="secondary">
         Expenses can be recorded in the base currency or in any of the currencies added here. Balances are shown in the base
-        currency once the currency used has a conversion rate. Changing the base currency, clears the rates and a newly added
+        currency once the currency used has a conversion rate. Changing the base currency clears the rates and a newly added
         currency starts at the latest fetched market rate. Rates can be refreshed to match the latest daily rate.
         A currency can be removed while no expense uses it. The loss is the average conversion loss for a person when paying
         in a foreign currency (may be 0).
@@ -68,30 +74,7 @@
 
 @code {
     private int attempts;
-
-    /// <summary>
-    /// The arrangement.
-    /// </summary>
-    [Parameter, EditorRequired]
-    public ArrangementSnapshot Snapshot { get; set; } = null!;
-
-    /// <summary>
-    /// The viewer's user ID.
-    /// </summary>
-    [Parameter, EditorRequired]
-    public Guid UserId { get; set; }
-
-    /// <summary>
-    /// Whether a command is in progress.
-    /// </summary>
-    [Parameter]
-    public bool Busy { get; set; }
-
-    /// <summary>
-    /// Runs a command: the method, the path under the arrangement, and the body. Returns whether it succeeded.
-    /// </summary>
-    [Parameter, EditorRequired]
-    public Func<HttpMethod, string?, object?, Task<bool>> Run { get; set; } = null!;
+    private string? rateError;
 
     private static string Number(decimal? value)
     {
@@ -100,8 +83,19 @@
 
     private static decimal? Parse(object? value)
     {
-        // A number input reports an invariant number, or nothing when emptied.
-        return value is string text && !string.IsNullOrWhiteSpace(text) ? decimal.Parse(text, NumberStyles.Float, CultureInfo.InvariantCulture) : null;
+        // A number input reports an invariant number, or nothing when emptied. A number beyond decimal is clamped, so
+        // that validation refuses it instead of the parse throwing.
+        if (value is not string text || string.IsNullOrWhiteSpace(text))
+        {
+            return null;
+        }
+
+        if (decimal.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var number))
+        {
+            return number;
+        }
+
+        return text.TrimStart().StartsWith('-') ? decimal.MinValue : decimal.MaxValue;
     }
 
     private static SortedDictionary<string, string> AddableCurrencyOptions(List<string> shown, string baseCurrency)
@@ -135,7 +129,12 @@
 
     private async Task SetRateAsync(string code, decimal? rate, decimal lossPercent)
     {
-        await Run(HttpMethod.Put, $"rates/{code}", new SetExchangeRateRequest(rate, lossPercent));
+        rateError = (rate is { } value ? ExpenseRules.ValidateRate(value) : null) ?? ExpenseRules.ValidateLoss(lossPercent);
+        if (rateError == null)
+        {
+            await Run(HttpMethod.Put, $"rates/{code}", new SetExchangeRateRequest(rate, lossPercent));
+        }
+
         attempts++;
     }
 
@@ -146,7 +145,7 @@
             return;
         }
 
-        if (Snapshot.ExchangeRates.Count == 0 || await JS.InvokeAsync<bool>("confirm", $"Change the base currency to {currency}? The exchange rates are cleared, but the currencies stay."))
+        if (Snapshot.ExchangeRates.Count == 0 || await JS.ConfirmAsync($"Change the base currency to {currency}? The exchange rates are cleared, but the currencies stay."))
         {
             await Run(HttpMethod.Put, "base-currency", new SetBaseCurrencyRequest(currency));
         }

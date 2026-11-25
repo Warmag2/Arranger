@@ -19,10 +19,11 @@ public static partial class AccountRules
     public const int UserNameMaxLength = 32;
 
     /// <summary>
-    /// The allowed user name characters and length, as a regular expression. <c>\z</c> rather than <c>$</c>, because
+    /// The allowed user name characters, as a regular expression. The length is checked separately against
+    /// <see cref="UserNameMinLength"/> and <see cref="UserNameMaxLength"/>. <c>\z</c> rather than <c>$</c>, because
     /// <c>$</c> also matches before a trailing newline.
     /// </summary>
-    public const string UserNamePattern = @"^[A-Za-z0-9._-]{3,32}\z";
+    public const string UserNamePattern = @"^[A-Za-z0-9._-]+\z";
 
     /// <summary>
     /// The minimum length of a password.
@@ -40,13 +41,20 @@ public static partial class AccountRules
     public const int TimeZoneIdMaxLength = 64;
 
     /// <summary>
+    /// The time zone used when nothing else has been chosen, or the chosen one is not known.
+    /// </summary>
+    public const string DefaultTimeZoneId = "UTC";
+
+    /// <summary>
     /// Whether the user name has an allowed length and only allowed characters.
     /// </summary>
     /// <param name="userName">The user name.</param>
     /// <returns><b>true</b> when valid.</returns>
     public static bool IsValidUserName(string? userName)
     {
-        return userName != null && UserNameRegex().IsMatch(userName);
+        return userName != null
+            && userName.Length is >= UserNameMinLength and <= UserNameMaxLength
+            && UserNameRegex().IsMatch(userName);
     }
 
     /// <summary>
@@ -74,7 +82,7 @@ public static partial class AccountRules
     /// <summary>
     /// Validate user settings.
     /// </summary>
-    /// <param name="userName">The handle.</param>
+    /// <param name="userName">The username.</param>
     /// <param name="timeZoneId">The IANA time zone.</param>
     /// <param name="currency">The ISO 4217 default currency.</param>
     /// <returns>The error message, or <b>null</b> when valid.</returns>
@@ -82,7 +90,7 @@ public static partial class AccountRules
     {
         if (!IsValidUserName(userName))
         {
-            return "The handle must be 3-32 letters, digits, dots, underscores or hyphens.";
+            return $"The username must be {UserNameMinLength}-{UserNameMaxLength} letters, digits, dots, underscores or hyphens.";
         }
 
         if (!IsKnownTimeZone(timeZoneId))

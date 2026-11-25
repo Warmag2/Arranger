@@ -16,26 +16,14 @@
 }
 
 <section>
-    <StatusMessage Message="@errorMessage" />
+    <StatusMessage Message="@errorMessage" IsError="true" />
     <EditForm Model="Input" method="post" OnValidSubmit="RegisterUserAsync" FormName="register">
         <DataAnnotationsValidator />
         <ValidationSummary role="alert" />
         <InputText type="hidden" @bind-Value="Input.TimeZoneId" data-browser-timezone />
-        <div class="form">
-            <label for="Input.UserName">Username</label>
-            <InputText @bind-Value="Input.UserName" id="Input.UserName" autocomplete="username" aria-required="true" placeholder="username" />
-            <ValidationMessage For="() => Input.UserName" />
-        </div>
-        <div class="form">
-            <label for="Input.Password">Password</label>
-            <InputText type="password" @bind-Value="Input.Password" id="Input.Password" autocomplete="new-password" aria-required="true" placeholder="password" />
-            <ValidationMessage For="() => Input.Password" />
-        </div>
-        <div class="form">
-            <label for="Input.ConfirmPassword">Confirm password</label>
-            <InputText type="password" @bind-Value="Input.ConfirmPassword" id="Input.ConfirmPassword" autocomplete="new-password" aria-required="true" placeholder="password" />
-            <ValidationMessage For="() => Input.ConfirmPassword" />
-        </div>
+        <FormField Label="Username" @bind-Value="Input.UserName" Autocomplete="username" Placeholder="username" />
+        <FormField Label="Password" Type="password" @bind-Value="Input.Password" Autocomplete="new-password" Placeholder="password" />
+        <FormField Label="Confirm password" Type="password" @bind-Value="Input.ConfirmPassword" Autocomplete="new-password" Placeholder="password" />
         <button type="submit" class="button button-submit">Register</button>
     </EditForm>
 </section>
@@ -77,19 +65,20 @@
             return;
         }
 
-        await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, AccountService.CreatePrincipal(result.User));
+        await AccountService.SignInAsync(HttpContext, result.User, isPersistent: false);
         NavigationManager.NavigateTo(ReturnUrls.ToLocalPath(ReturnUrl));
     }
 
     private sealed class InputModel
     {
         [Required]
-        [RegularExpression(AccountRules.UserNamePattern, ErrorMessage = "The username must be 3-32 characters: letters A-Z, digits, '.', '_' or '-'.")]
+        [StringLength(AccountRules.UserNameMaxLength, ErrorMessage = AccountMessages.LengthRange, MinimumLength = AccountRules.UserNameMinLength)]
+        [RegularExpression(AccountRules.UserNamePattern, ErrorMessage = "The username may only contain letters A-Z, digits, '.', '_' or '-'.")]
         [Display(Name = "Username")]
         public string UserName { get; set; } = string.Empty;
 
         [Required]
-        [StringLength(AccountRules.PasswordMaxLength, ErrorMessage = "The {0} must be at least {2} and at most {1} characters long.", MinimumLength = AccountRules.PasswordMinLength)]
+        [StringLength(AccountRules.PasswordMaxLength, ErrorMessage = AccountMessages.LengthRange, MinimumLength = AccountRules.PasswordMinLength)]
         [DataType(DataType.Password)]
         [Display(Name = "Password")]
         public string Password { get; set; } = string.Empty;

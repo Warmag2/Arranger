@@ -1,0 +1,32 @@
+@if (IsOwner)
+{
+    <span class="badge badge-owner">Owner</span>
+}
+else if (IsAdmin)
+{
+    <span class="badge badge-admin">Admin</span>
+}
+else if (ShowMember)
+{
+    <span class="badge badge-member">Member</span>
+}
+
+@code {
+    /// <summary>
+    /// Whether the user is an admin.
+    /// </summary>
+    [Parameter]
+    public bool IsAdmin { get; set; }
+
+    /// <summary>
+    /// Whether the user owns the arrangement.
+    /// </summary>
+    [Parameter]
+    public bool IsOwner { get; set; }
+
+    /// <summary>
+    /// Whether a plain member gets a badge too, instead of nothing.
+    /// </summary>
+    [Parameter]
+    public bool ShowMember { get; set; }
+}

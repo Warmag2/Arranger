@@ -6,10 +6,12 @@ services:
     hostname: arranger
     image: arranger:latest
     environment:
-      ASPNETCORE_ENVIRONMENT: Release
+      ASPNETCORE_ENVIRONMENT: Production
       ConnectionStrings__Database: "User ID=${ARRANGER_USER:?err};Password=${ARRANGER_PASSWORD:?err};Host=host.docker.internal;Port=5432;Database=arranger;"
       DataProtectionKeysPath: "/app/dpkeys"
       TZ: "Europe/Helsinki"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - 127.0.0.1:8549:8080
     volumes:

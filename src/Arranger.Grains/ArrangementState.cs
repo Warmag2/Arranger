@@ -90,6 +90,19 @@ public sealed class ArrangementState
     }
 
     /// <summary>
+    /// Replace the arrangement row and its exchange rates, keeping the loaded members, time options and expenses.
+    /// </summary>
+    /// <param name="updated">The saved arrangement row with its saved rate rows.</param>
+    public void ReplaceArrangementAndRates(Arrangement updated)
+    {
+        ArgumentNullException.ThrowIfNull(updated);
+        var rates = updated.ExchangeRates;
+        rates.ForEach(r => r.Arrangement = null);
+        ReplaceArrangement(updated);
+        Arrangement.ExchangeRates = rates;
+    }
+
+    /// <summary>
     /// Add or replace an exchange rate.
     /// </summary>
     /// <param name="rate">The saved rate row.</param>
@@ -99,17 +112,6 @@ public sealed class ArrangementState
         rate.Arrangement = null;
         RemoveExchangeRate(rate.Currency);
         Arrangement.ExchangeRates.Add(rate);
-    }
-
-    /// <summary>
-    /// Replace all exchange rates.
-    /// </summary>
-    /// <param name="rates">The saved rate rows.</param>
-    public void ReplaceExchangeRates(IEnumerable<ExchangeRate> rates)
-    {
-        ArgumentNullException.ThrowIfNull(rates);
-        Arrangement.ExchangeRates = rates.ToList();
-        Arrangement.ExchangeRates.ForEach(r => r.Arrangement = null);
     }
 
     /// <summary>
@@ -288,6 +290,18 @@ public sealed class ArrangementState
     }
 
     /// <summary>
+    /// Whether the user may edit or delete an expense: the member who paid it, or an admin.
+    /// </summary>
+    /// <param name="userId">The public user ID.</param>
+    /// <param name="expense">The expense.</param>
+    /// <returns><b>true</b> when the user may change the expense.</returns>
+    public bool CanEditExpense(Guid userId, Expense expense)
+    {
+        ArgumentNullException.ThrowIfNull(expense);
+        return FindMember(userId) is { } member && (member.IsAdmin || member.UserId == expense.PaidByUserId);
+    }
+
+    /// <summary>
     /// Check that the arrangement exists.
     /// </summary>
     /// <returns>The refusal, or <b>null</b> when it exists.</returns>
@@ -303,12 +317,7 @@ public sealed class ArrangementState
     /// <returns>The refusal, or <b>null</b> when allowed.</returns>
     public CommandResult? CheckMember(Guid userId)
     {
-        if (CheckExists() is { } missing)
-        {
-            return missing;
-        }
-
-        return FindMember(userId) == null ? CommandResult.Failure(CommandError.NotMember, "Join the arrangement first.") : null;
+        return Check(userId, _ => true, string.Empty);
     }
 
     /// <summary>
@@ -318,12 +327,18 @@ public sealed class ArrangementState
     /// <returns>The refusal, or <b>null</b> when allowed.</returns>
     public CommandResult? CheckScheduleEnabled(Guid userId)
     {
-        if (CheckMember(userId) is { } denied)
-        {
-            return denied;
-        }
+        return Check(userId, _ => !Arrangement.IsScheduleDisabled, "The schedule is disabled.");
+    }
 
-        return Arrangement.IsScheduleDisabled ? CommandResult.Failure(CommandError.Forbidden, "The schedule is disabled.") : null;
+    /// <summary>
+    /// Check that the user may add and remove times: a member when the schedule is enabled, and an admin unless new
+    /// times are allowed.
+    /// </summary>
+    /// <param name="userId">The public user ID.</param>
+    /// <returns>The refusal, or <b>null</b> when allowed.</returns>
+    public CommandResult? CheckCanEditTimes(Guid userId)
+    {
+        return CheckScheduleEnabled(userId) ?? Check(userId, m => Arrangement.AllowNewTimes || m.IsAdmin, "Only admins can change the times.");
     }
 
     /// <summary>
@@ -333,12 +348,7 @@ public sealed class ArrangementState
     /// <returns>The refusal, or <b>null</b> when allowed.</returns>
     public CommandResult? CheckExpensesEnabled(Guid userId)
     {
-        if (CheckMember(userId) is { } denied)
-        {
-            return denied;
-        }
-
-        return Arrangement.IsExpensesDisabled ? CommandResult.Failure(CommandError.Forbidden, "The expenses are disabled.") : null;
+        return Check(userId, _ => !Arrangement.IsExpensesDisabled, "The expenses are disabled.");
     }
 
     /// <summary>
@@ -348,12 +358,7 @@ public sealed class ArrangementState
     /// <returns>The refusal, or <b>null</b> when allowed.</returns>
     public CommandResult? CheckAdmin(Guid userId)
     {
-        if (CheckMember(userId) is { } denied)
-        {
-            return denied;
-        }
-
-        return FindMember(userId)!.IsAdmin ? null : CommandResult.Failure(CommandError.Forbidden, "Only admins can do this.");
+        return Check(userId, m => m.IsAdmin, "Only admins can do this.");
     }
 
     /// <summary>
@@ -363,12 +368,7 @@ public sealed class ArrangementState
     /// <returns>The refusal, or <b>null</b> when allowed.</returns>
     public CommandResult? CheckOwner(Guid userId)
     {
-        if (CheckMember(userId) is { } denied)
-        {
-            return denied;
-        }
-
-        return FindMember(userId)!.UserId == Arrangement.OwnerUserId ? null : CommandResult.Failure(CommandError.Forbidden, "Only the owner can do this.");
+        return Check(userId, m => m.UserId == Arrangement.OwnerUserId, "Only the owner can do this.");
     }
 
     /// <summary>
@@ -403,7 +403,7 @@ public sealed class ArrangementState
             .Select(m =>
             {
                 var profile = _profiles[m.UserId];
-                return new ArrangementMemberSnapshot(profile.UniqueId, profile.UserName, m.IsAdmin, m.JoinedAt);
+                return new ArrangementMemberSnapshot(profile.UniqueId, profile.UserName, m.IsAdmin, m.JoinedAt, profile.PictureVersion);
             })
             .ToList();
 
@@ -451,6 +451,21 @@ public sealed class ArrangementState
             expenses,
             arrangement.ExchangeRates.ToDictionary(r => r.Currency, r => new ExchangeRateSnapshot(r.Rate, r.LossPercent), StringComparer.Ordinal),
             new ArrangementVersion(_epoch, _sequence));
+    }
+
+    private CommandResult? Check(Guid userId, Func<ArrangementMember, bool> allowed, string refusal)
+    {
+        if (CheckExists() is { } missing)
+        {
+            return missing;
+        }
+
+        if (FindMember(userId) is not { } member)
+        {
+            return CommandResult.Failure(CommandError.NotMember, "Join the arrangement first.");
+        }
+
+        return allowed(member) ? null : CommandResult.Failure(CommandError.Forbidden, refusal);
     }
 
     private UserProfile? FindProfile(Guid userId)

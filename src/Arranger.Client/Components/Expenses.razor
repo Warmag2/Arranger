@@ -1,23 +1,12 @@
+@inherits ArrangementComponentBase
 @inject CurrentUser CurrentUser
 @inject IJSRuntime JS
 
 @{
-    var me = Snapshot.FindMember(UserId);
-    var isAdmin = me?.IsAdmin == true;
-    var canEdit = me != null && !Snapshot.IsExpensesDisabled;
+    var canEdit = Me != null && !Snapshot.IsExpensesDisabled;
     var baseCurrency = Snapshot.BaseCurrency;
-    var missing = ExpenseMath.MissingRates(Snapshot.Expenses, baseCurrency, Snapshot.ExchangeRates);
     var isInBase = missing.Count == 0;
-    var balances = isInBase
-        ? new Dictionary<string, IReadOnlyDictionary<Guid, decimal>> { [baseCurrency] = ExpenseMath.InBaseCurrency(Snapshot.Expenses, baseCurrency, Snapshot.ExchangeRates) }
-        : ExpenseMath.Balances(Snapshot.Expenses).ToDictionary(b => b.Key, b => (IReadOnlyDictionary<Guid, decimal>)b.Value);
-    var spent = isInBase
-        ? new Dictionary<string, IReadOnlyDictionary<Guid, decimal>> { [baseCurrency] = ExpenseMath.InBaseCurrency(ExpenseMath.Spent(Snapshot.Expenses), baseCurrency, Snapshot.ExchangeRates) }
-        : ExpenseMath.Spent(Snapshot.Expenses).ToDictionary(b => b.Key, b => (IReadOnlyDictionary<Guid, decimal>)b.Value);
-    var received = isInBase
-        ? new Dictionary<string, IReadOnlyDictionary<Guid, decimal>> { [baseCurrency] = ExpenseMath.InBaseCurrency(ExpenseMath.Received(Snapshot.Expenses), baseCurrency, Snapshot.ExchangeRates) }
-        : ExpenseMath.Received(Snapshot.Expenses).ToDictionary(b => b.Key, b => (IReadOnlyDictionary<Guid, decimal>)b.Value);
-    var payments = balances.SelectMany(b => ExpenseMath.SuggestPayments(b.Value, b.Key, Today())).ToList();
+    var payments = balances.SelectMany(b => ExpenseMath.SuggestPayments(b.Value, b.Key, CurrentUser.Today())).ToList();
 }
 
 @if (Snapshot.IsExpensesDisabled)
@@ -37,8 +26,8 @@
             <input id="expense-amount" type="number" min="0" step="any" @bind="amount" />
         </div>
         <div class="form">
-            <label>Currency</label>
-            <FormComboBox TItem="string" Options="@CurrencyOptions()" SelectedOption="@currency" OnChanged="@(code => currency = code)" EnableErrorDisplay="true" />
+            <label for="expense-currency">Currency</label>
+            <FormComboBox TItem="string" Id="expense-currency" Options="@CurrencyOptions()" SelectedOption="@currency" OnChanged="@(code => currency = code)" EnableErrorDisplay="true" />
         </div>
         <div class="form">
             <label for="expense-payer">Paid by</label>
@@ -54,14 +43,14 @@
             <input id="expense-date" type="date" @bind="date" />
         </div>
         <div class="form">
-            <label>@(isPayment ? "Paid to" : "Shared by")</label>
+            <span id="expense-participants">@(isPayment ? "Paid to" : "Shared by")</span>
             @{
                 var allSelected = participants.Count == Snapshot.Members.Count;
             }
             <div class="form-submit">
                 <button type="button" class="button" @onclick="ToggleAll">@(allSelected ? "None" : "All")</button>
             </div>
-            <div class="form-submit">
+            <div class="form-submit" role="group" aria-labelledby="expense-participants">
                 @foreach (var member in Snapshot.Members)
                 {
                     var isIn = participants.Contains(member.UserId);
@@ -105,7 +94,7 @@ else
                     <th scope="col">Description</th>
                     @if (canEdit)
                     {
-                        <th scope="col"></th>
+                        <th scope="col"><span class="visually-hidden">Actions</span></th>
                     }
                 </tr>
             </thead>
@@ -113,17 +102,17 @@ else
                 @foreach (var expense in Snapshot.Expenses)
                 {
                     <tr class="@(expense.IsSettlementPayment ? "payment" : null)">
-                        <td>@expense.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</td>
+                        <td>@DisplayFormat.Date(expense.Date)</td>
                         @* Paid in another currency: that amount, then its value in the base currency. *@
                         <td class="number">
                             @if (expense.Currency != baseCurrency)
                             {
                                 <span class="secondary">
-                                    @(expense.Currency == baseCurrency ? null : Money(expense.Amount, expense.Currency))
+                                    @DisplayFormat.Money(expense.Amount, expense.Currency)
                                     &nbsp;
                                 </span>
                             }
-                            @(ExpenseMath.InBaseCurrency(expense.Amount, expense.Currency, baseCurrency, Snapshot.ExchangeRates) is { } inBase ? Money(inBase, baseCurrency) : $"? {baseCurrency}")
+                            @(ExpenseMath.InBaseCurrency(expense.Amount, expense.Currency, baseCurrency, Snapshot.ExchangeRates) is { } inBase ? DisplayFormat.Money(inBase, baseCurrency) : $"? {baseCurrency}")
                         </td>
                         <td>@Name(expense.PaidByUserId)</td>
                         <td>
@@ -143,10 +132,10 @@ else
                         @if (canEdit)
                         {
                             <td class="number">
-                                @if (isAdmin || expense.PaidByUserId == UserId)
+                                @if (IsAdmin || expense.PaidByUserId == UserId)
                                 {
-                                    <button class="button" disabled="@Busy" title="Edit" @onclick="() => Open(expense)">✎&#xFE0E;</button>
-                                    <button class="button button-delete" disabled="@Busy" title="Delete" @onclick="() => DeleteAsync(expense)">×</button>
+                                    <button class="button" disabled="@Busy" title="Edit" aria-label="Edit" @onclick="() => Open(expense)">✎&#xFE0E;</button>
+                                    <button class="button button-delete" disabled="@Busy" title="Delete" aria-label="Delete" @onclick="() => DeleteAsync(expense)">×</button>
                                 }
                             </td>
                         }
@@ -185,9 +174,9 @@ else
                         var gained = received[code].GetValueOrDefault(member.UserId);
                         <tr>
                             <td>@member.UserName</td>
-                            <td class="number">@Money(paid, code)</td>
-                            <td class="number">@Money(gained, code)</td>
-                            <td class="number @BalanceClass(balance)">@Money(balance, code)</td>
+                            <td class="number">@DisplayFormat.Money(paid, code)</td>
+                            <td class="number">@DisplayFormat.Money(gained, code)</td>
+                            <td class="number @BalanceClass(balance)">@DisplayFormat.Money(balance, code)</td>
                         </tr>
                     }
                 </tbody>
@@ -211,7 +200,7 @@ else
                         <th scope="col" class="number">Amount</th>
                         @if (canEdit)
                         {
-                            <th scope="col"></th>
+                            <th scope="col"><span class="visually-hidden">Actions</span></th>
                         }
                     </tr>
                 </thead>
@@ -221,7 +210,7 @@ else
                         <tr>
                             <td>@Name(payment.PaidByUserId)</td>
                             <td>@Name(payment.ParticipantUserIds[0])</td>
-                            <td class="number">@Money(payment.Amount, payment.Currency)</td>
+                            <td class="number">@DisplayFormat.Money(payment.Amount, payment.Currency)</td>
                             @if (canEdit)
                             {
                                 <td class="number">
@@ -248,33 +237,26 @@ else
     private HashSet<Guid> participants = [];
     private string? formError;
 
-    /// <summary>
-    /// The arrangement.
-    /// </summary>
-    [Parameter, EditorRequired]
-    public ArrangementSnapshot Snapshot { get; set; } = null!;
+    // The totals of totalsOf. Recalculated only when a new snapshot arrives, not on every click in the form.
+    private ArrangementSnapshot? totalsOf;
+    private IReadOnlyList<string> missing = [];
+    private IReadOnlyDictionary<string, IReadOnlyDictionary<Guid, decimal>> balances = new Dictionary<string, IReadOnlyDictionary<Guid, decimal>>();
+    private IReadOnlyDictionary<string, IReadOnlyDictionary<Guid, decimal>> spent = new Dictionary<string, IReadOnlyDictionary<Guid, decimal>>();
+    private IReadOnlyDictionary<string, IReadOnlyDictionary<Guid, decimal>> received = new Dictionary<string, IReadOnlyDictionary<Guid, decimal>>();
 
-    /// <summary>
-    /// The viewer's user ID.
-    /// </summary>
-    [Parameter, EditorRequired]
-    public Guid UserId { get; set; }
-
-    /// <summary>
-    /// Whether a command is in progress.
-    /// </summary>
-    [Parameter]
-    public bool Busy { get; set; }
-
-    /// <summary>
-    /// Runs a command: the method, the path under the arrangement, and the body. Returns whether it succeeded.
-    /// </summary>
-    [Parameter, EditorRequired]
-    public Func<HttpMethod, string, object?, Task<bool>> Run { get; set; } = null!;
-
-    private static string Money(decimal value, string code)
+    /// <inheritdoc />
+    protected override void OnParametersSet()
     {
-        return $"{value.ToString("N" + Currencies.Decimals(code), CultureInfo.CurrentCulture)} {code}";
+        if (ReferenceEquals(totalsOf, Snapshot))
+        {
+            return;
+        }
+
+        totalsOf = Snapshot;
+        missing = ExpenseMath.MissingRates(Snapshot.Expenses, Snapshot.BaseCurrency, Snapshot.ExchangeRates);
+        balances = Display(ExpenseMath.Balances(Snapshot.Expenses));
+        spent = Display(ExpenseMath.Spent(Snapshot.Expenses));
+        received = Display(ExpenseMath.Received(Snapshot.Expenses));
     }
 
     private static string? BalanceClass(decimal balance)
@@ -285,11 +267,6 @@ else
             > 0 => "positive",
             _ => null,
         };
-    }
-
-    private DateOnly Today()
-    {
-        return DateOnly.FromDateTime(CurrentUser.ToLocalTime(DateTime.UtcNow));
     }
 
     private string Name(Guid userId)
@@ -303,6 +280,14 @@ else
         return Currencies.Options(Snapshot.AvailableCurrencies().Append(currency).Distinct());
     }
 
+    private IReadOnlyDictionary<string, IReadOnlyDictionary<Guid, decimal>> Display(IReadOnlyDictionary<string, Dictionary<Guid, decimal>> sums)
+    {
+        // All in the base currency when every rate is known, otherwise per currency.
+        return missing.Count == 0
+            ? new Dictionary<string, IReadOnlyDictionary<Guid, decimal>> { [Snapshot.BaseCurrency] = ExpenseMath.InBaseCurrency(sums, Snapshot.BaseCurrency, Snapshot.ExchangeRates) }
+            : sums.ToDictionary(b => b.Key, b => (IReadOnlyDictionary<Guid, decimal>)b.Value);
+    }
+
     private void Open(ExpenseSnapshot? expense)
     {
         // A new expense: the currency of the last one added if still available, paid by me, benefitted only by me by default.
@@ -313,7 +298,7 @@ else
         amount = expense?.Amount ?? 0;
         currency = expense?.Currency ?? last?.Currency ?? Snapshot.BaseCurrency;
         paidBy = expense?.PaidByUserId ?? UserId;
-        date = expense?.Date ?? Today();
+        date = expense?.Date ?? CurrentUser.Today();
         isPayment = expense?.IsSettlementPayment ?? false;
         participants = (expense?.ParticipantUserIds ?? new[] { UserId }).ToHashSet();
         formError = null;
@@ -353,7 +338,7 @@ else
 
     private async Task DeleteAsync(ExpenseSnapshot expense)
     {
-        if (await JS.InvokeAsync<bool>("confirm", $"Delete \"{expense.Description}\"?"))
+        if (await JS.ConfirmAsync($"Delete \"{expense.Description}\"?"))
         {
             await Run(HttpMethod.Delete, $"expenses/{expense.Id}", null);
         }

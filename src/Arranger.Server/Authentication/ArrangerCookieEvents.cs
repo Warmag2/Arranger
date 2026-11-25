@@ -1,5 +1,6 @@
 using System;
 using System.Threading.Tasks;
+using Faemiyah.Arranger.Contracts;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Http;
@@ -89,7 +90,7 @@ public sealed class ArrangerCookieEvents : CookieAuthenticationEvents
     public static bool IsApiRequest(HttpRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
-        return request.Path.StartsWithSegments("/api", StringComparison.OrdinalIgnoreCase)
-            || request.Path.StartsWithSegments("/hubs", StringComparison.OrdinalIgnoreCase);
+        return request.Path.StartsWithSegments("/" + ApiRoutes.Api, StringComparison.OrdinalIgnoreCase)
+            || request.Path.StartsWithSegments("/" + ApiRoutes.Hubs, StringComparison.OrdinalIgnoreCase);
     }
 }

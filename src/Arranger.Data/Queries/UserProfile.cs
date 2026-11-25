@@ -1,10 +1,4 @@
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
-using Microsoft.EntityFrameworkCore;
-using Faemiyah.Repository.Interfaces;
 
 namespace Faemiyah.Arranger.Data.Queries;
 
@@ -13,6 +7,7 @@ namespace Faemiyah.Arranger.Data.Queries;
 /// </summary>
 /// <param name="Id">The internal user ID.</param>
 /// <param name="UniqueId">The public user ID.</param>
-/// <param name="UserName">The handle.</param>
+/// <param name="UserName">The username.</param>
 /// <param name="DefaultCurrency">The ISO 4217 default currency.</param>
-public sealed record UserProfile(long Id, Guid UniqueId, string UserName, string DefaultCurrency);
+/// <param name="PictureVersion">The profile picture's row version, or <b>null</b> when there is no picture.</param>
+public sealed record UserProfile(long Id, Guid UniqueId, string UserName, string DefaultCurrency, uint? PictureVersion);

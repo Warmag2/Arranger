@@ -1,0 +1,66 @@
+@using System.Linq.Expressions
+
+<div class="form">
+    <label for="@Id">@Label</label>
+    <InputText type="@Type" Value="@Value" ValueChanged="@ValueChanged" ValueExpression="@ValueExpression" id="@Id" autocomplete="@Autocomplete" aria-required="true" placeholder="@Placeholder" />
+    <ValidationMessage For="@ValueExpression" />
+</div>
+
+@code {
+    /// <summary>
+    /// The autocomplete hint, such as <c>username</c> or <c>new-password</c>.
+    /// </summary>
+    [Parameter, EditorRequired]
+    public string Autocomplete { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The label.
+    /// </summary>
+    [Parameter, EditorRequired]
+    public string Label { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The placeholder text.
+    /// </summary>
+    [Parameter, EditorRequired]
+    public string Placeholder { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The input type, <c>text</c> unless set.
+    /// </summary>
+    [Parameter]
+    public string Type { get; set; } = "text";
+
+    /// <summary>
+    /// The value. Bind it with <c>@bind-Value</c>.
+    /// </summary>
+    [Parameter]
+    public string? Value { get; set; }
+
+    /// <summary>
+    /// Invoked when the value changes.
+    /// </summary>
+    [Parameter]
+    public EventCallback<string?> ValueChanged { get; set; }
+
+    /// <summary>
+    /// The bound model property, which names the form field and its validation messages.
+    /// </summary>
+    [Parameter]
+    public Expression<Func<string?>> ValueExpression { get; set; } = default!;
+
+    // The member path, such as "Input.UserName", which is also the form field name.
+    private string Id
+    {
+        get
+        {
+            var names = new List<string>();
+            for (var member = ValueExpression.Body as MemberExpression; member != null; member = member.Expression as MemberExpression)
+            {
+                names.Insert(0, member.Member.Name);
+            }
+
+            return string.Join('.', names);
+        }
+    }
+}

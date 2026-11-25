@@ -1,5 +1,6 @@
 using System;
 using System.Threading.Tasks;
+using Faemiyah.Arranger.Contracts;
 using Faemiyah.Arranger.Contracts.Users;
 
 namespace Faemiyah.Arranger.Client.Services;
@@ -30,7 +31,7 @@ public sealed class CurrentUser
     {
         if (_settings == null)
         {
-            var result = await _api.GetAsync<UserSettings>("api/me/settings");
+            var result = await _api.GetAsync<UserSettings>(ApiRoutes.MySettings);
             if (result.IsSuccess)
             {
                 Update(result.Value);
@@ -55,6 +56,15 @@ public sealed class CurrentUser
     /// Gets the user's time zone, or UTC until the settings are loaded.
     /// </summary>
     public TimeZoneInfo TimeZone => _timeZone;
+
+    /// <summary>
+    /// Get today's date in the user's time zone.
+    /// </summary>
+    /// <returns>The local date.</returns>
+    public DateOnly Today()
+    {
+        return DateOnly.FromDateTime(ToLocalTime(DateTime.UtcNow));
+    }
 
     /// <summary>
     /// Convert a time in the user's time zone into UTC.

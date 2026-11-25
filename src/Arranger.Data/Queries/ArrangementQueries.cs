@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Faemiyah.Arranger.Contracts.Arrangements;
 using Microsoft.EntityFrameworkCore;
 using Faemiyah.Repository.Interfaces;
 
@@ -30,14 +31,14 @@ public class ArrangementQueries
     /// <param name="userId">The public user ID.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>The arrangements.</returns>
-    public async Task<IReadOnlyList<ArrangementSummaryRow>> GetForUserAsync(Guid userId, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<ArrangementSummary>> GetForUserAsync(Guid userId, CancellationToken cancellationToken = default)
     {
         await using var context = await _contextProvider.GetDbContextAsync(cancellationToken: cancellationToken);
         return await context.ArrangementMembers
             .AsNoTracking()
             .Where(m => m.User!.UniqueId == userId)
             .OrderByDescending(m => m.Arrangement!.CreatedAt)
-            .Select(m => new ArrangementSummaryRow(
+            .Select(m => new ArrangementSummary(
                 m.Arrangement!.UniqueId,
                 m.Arrangement.Title,
                 m.Arrangement.CreatedAt,

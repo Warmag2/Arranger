@@ -2,7 +2,6 @@ using System;
 using System.Threading.Tasks;
 using Faemiyah.Arranger.Contracts.Arrangements;
 using Faemiyah.Arranger.Grains.Abstractions;
-using Faemiyah.Arranger.Server.Endpoints;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 using Orleans;
@@ -46,7 +45,7 @@ public sealed class ArrangementHub : Hub<IArrangementClient>
         // Join before reading, so that no change can fall between the snapshot and the first push.
         var group = GroupName(arrangementId);
         await Groups.AddToGroupAsync(Context.ConnectionId, group);
-        var result = await _grains.GetGrain<IArrangementGrain>(arrangementId).GetSnapshotAsync(Context.User!.GetRequiredUserId());
+        var result = await _grains.GetGrain<IArrangementGrain>(arrangementId).GetSnapshotAsync();
         if (!result.IsSuccess)
         {
             await Groups.RemoveFromGroupAsync(Context.ConnectionId, group);

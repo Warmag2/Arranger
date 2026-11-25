@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Linq.Expressions;
 using System.Threading;
 using System.Threading.Tasks;
+using Faemiyah.Arranger.Data.Entities;
 using Microsoft.EntityFrameworkCore;
 using Faemiyah.Repository.Interfaces;
 
@@ -13,6 +15,9 @@ namespace Faemiyah.Arranger.Data.Queries;
 /// </summary>
 public class UserQueries
 {
+    private static readonly Expression<Func<User, UserProfile>> ToProfile =
+        u => new UserProfile(u.Id, u.UniqueId, u.UserName, u.DefaultCurrency, u.Picture != null ? u.Picture.ConcurrencyToken : null);
+
     private readonly IDatabaseContextProvider<ArrangerContext> _contextProvider;
 
     /// <summary>
@@ -22,6 +27,22 @@ public class UserQueries
     public UserQueries(IDatabaseContextProvider<ArrangerContext> contextProvider)
     {
         _contextProvider = contextProvider;
+    }
+
+    /// <summary>
+    /// Get a user's profile picture.
+    /// </summary>
+    /// <param name="userId">The public user ID.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The picture, or <b>null</b> when the user does not exist or has no picture.</returns>
+    public async Task<UserPictureData?> GetPictureAsync(Guid userId, CancellationToken cancellationToken = default)
+    {
+        await using var context = await _contextProvider.GetDbContextAsync(cancellationToken: cancellationToken);
+        return await context.UserPictures
+            .AsNoTracking()
+            .Where(p => p.User!.UniqueId == userId)
+            .Select(p => new UserPictureData(p.Data, p.ContentType))
+            .SingleOrDefaultAsync(cancellationToken);
     }
 
     /// <summary>
@@ -36,7 +57,7 @@ public class UserQueries
         return await context.Users
             .AsNoTracking()
             .Where(u => u.UniqueId == userId)
-            .Select(u => new UserProfile(u.Id, u.UniqueId, u.UserName, u.DefaultCurrency))
+            .Select(ToProfile)
             .SingleOrDefaultAsync(cancellationToken);
     }
 
@@ -58,48 +79,7 @@ public class UserQueries
         return await context.Users
             .AsNoTracking()
             .Where(u => ids.Contains(u.Id))
-            .Select(u => new UserProfile(u.Id, u.UniqueId, u.UserName, u.DefaultCurrency))
+            .Select(ToProfile)
             .ToListAsync(cancellationToken);
-    }
-
-    /// <summary>
-    /// Whether a user has a profile picture.
-    /// </summary>
-    /// <param name="userId">The public user ID.</param>
-    /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns><b>true</b> when the user has a picture.</returns>
-    public async Task<bool> HasPictureAsync(Guid userId, CancellationToken cancellationToken = default)
-    {
-        await using var context = await _contextProvider.GetDbContextAsync(cancellationToken: cancellationToken);
-        return await context.UserPictures.AnyAsync(p => p.User!.UniqueId == userId, cancellationToken);
-    }
-
-    /// <summary>
-    /// Get a user's picture.
-    /// </summary>
-    /// <param name="userId">The public user ID.</param>
-    /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>The picture data, or <b>null</b> when the user does not exist.</returns>
-    public async Task<UserPictureData?> GetPictureAsync(Guid userId, CancellationToken cancellationToken = default)
-    {
-        await using var context = await _contextProvider.GetDbContextAsync(cancellationToken: cancellationToken);
-        var user = await context.Users
-            .AsNoTracking()
-            .Where(u => u.UniqueId == userId)
-            .Select(u => new { u.Id, u.UserName })
-            .SingleOrDefaultAsync(cancellationToken);
-
-        if (user == null)
-        {
-            return null;
-        }
-
-        var picture = await context.UserPictures
-            .AsNoTracking()
-            .Where(p => p.UserId == user.Id)
-            .Select(p => new { p.Data, p.ContentType, p.ConcurrencyToken })
-            .SingleOrDefaultAsync(cancellationToken);
-
-        return new UserPictureData(user.UserName, picture?.Data, picture?.ContentType, picture?.ConcurrencyToken);
     }
 }

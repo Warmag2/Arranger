@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -85,7 +86,7 @@ public sealed class ArrangementGrain : Grain, IArrangementGrain
     public override async Task OnActivateAsync(CancellationToken cancellationToken)
     {
         var id = ArrangementId;
-        var arrangement = await _arrangements.GetAsync(a => a.UniqueId == id, processIncludes: true, cancellationToken: cancellationToken);
+        var arrangement = await _arrangements.GetAsync(id, processIncludes: true, cancellationToken: cancellationToken);
         var profiles = arrangement == null ? [] : await _userQueries.GetProfilesAsync(ArrangementState.GetUserIds(arrangement), cancellationToken);
         _state.Load(arrangement, profiles);
         await base.OnActivateAsync(cancellationToken);
@@ -100,9 +101,8 @@ public sealed class ArrangementGrain : Grain, IArrangementGrain
             return CommandResult.Failure(CommandError.Conflict, "The arrangement already exists.");
         }
 
-        var title = ArrangementRules.NormalizeText(request.Title);
-        var description = ArrangementRules.NormalizeText(request.Description);
-        if (ArrangementRules.ValidateDetails(title, description) is { } invalid)
+        var (title, description, invalid) = ArrangementRules.NormalizeDetails(request.Title, request.Description);
+        if (invalid != null)
         {
             return CommandResult.Failure(CommandError.Invalid, invalid);
         }
@@ -124,24 +124,20 @@ public sealed class ArrangementGrain : Grain, IArrangementGrain
             BaseCurrency = creator.DefaultCurrency,
             AllowNewUsers = true,
             AllowNewTimes = false,
-            IsScheduleDisabled = !request.IsScheduleEnabled,
-            IsExpensesDisabled = !request.IsExpensesEnabled,
+            IsScheduleDisabled = request.IsScheduleDisabled,
+            IsExpensesDisabled = request.IsExpensesDisabled,
             Members = [new ArrangementMember { UserId = creator.Id, JoinedAt = now, IsAdmin = true }],
         };
 
-        var added = await _arrangements.AddAsync(arrangement, a => a.UniqueId == id);
-        if (!added.IsSuccess)
+        return await CommitAsync(_arrangements.AddAsync(arrangement, a => a.UniqueId == id), added =>
         {
-            return WriteFailed(added.Status);
-        }
-
-        _state.Load(added.Value, [creator]);
-        _logger.LogInformation("User {UserId} created arrangement {ArrangementId}.", userId, id);
-        return await PublishAsync();
+            _state.Load(added, [creator]);
+            _logger.LogInformation("User {UserId} created arrangement {ArrangementId}.", userId, id);
+        });
     }
 
     /// <inheritdoc />
-    public Task<CommandResult> GetSnapshotAsync(Guid userId)
+    public Task<CommandResult> GetSnapshotAsync()
     {
         return Task.FromResult(_state.Current());
     }
@@ -176,15 +172,11 @@ public sealed class ArrangementGrain : Grain, IArrangementGrain
         }
 
         var member = new ArrangementMember { ArrangementId = arrangement.Id, UserId = profile.Id, JoinedAt = Now() };
-        var added = await _members.AddAsync(member, m => m.ArrangementId == member.ArrangementId && m.UserId == member.UserId);
-        if (!added.IsSuccess)
+        return await CommitAsync(_members.AddAsync(member, m => m.ArrangementId == member.ArrangementId && m.UserId == member.UserId), added =>
         {
-            return WriteFailed(added.Status);
-        }
-
-        _state.AddMember(added.Value, profile);
-        _logger.LogInformation("User {UserId} joined arrangement {ArrangementId}.", userId, ArrangementId);
-        return await PublishAsync();
+            _state.AddMember(added, profile);
+            _logger.LogInformation("User {UserId} joined arrangement {ArrangementId}.", userId, ArrangementId);
+        });
     }
 
     /// <inheritdoc />
@@ -206,15 +198,11 @@ public sealed class ArrangementGrain : Grain, IArrangementGrain
             return CommandResult.Failure(CommandError.Invalid, "You cannot leave while you are part of an expense.");
         }
 
-        var deleted = await _members.DeleteWithVotesAsync(member);
-        if (!deleted.IsSuccess)
+        return await CommitAsync(_members.DeleteWithVotesAsync(member), _ =>
         {
-            return WriteFailed(deleted.Status);
-        }
-
-        _state.RemoveMember(member);
-        _logger.LogInformation("User {UserId} left arrangement {ArrangementId}.", userId, ArrangementId);
-        return await PublishAsync();
+            _state.RemoveMember(member);
+            _logger.LogInformation("User {UserId} left arrangement {ArrangementId}.", userId, ArrangementId);
+        });
     }
 
     /// <inheritdoc />
@@ -263,13 +251,13 @@ public sealed class ArrangementGrain : Grain, IArrangementGrain
         }
 
         var update = _state.Arrangement.CloneDetails();
-        if (update.IsScheduleDisabled != request.IsScheduleEnabled && update.IsExpensesDisabled != request.IsExpensesEnabled)
+        if (update.IsScheduleDisabled == request.IsScheduleDisabled && update.IsExpensesDisabled == request.IsExpensesDisabled)
         {
             return _state.Current();
         }
 
-        update.IsScheduleDisabled = !request.IsScheduleEnabled;
-        update.IsExpensesDisabled = !request.IsExpensesEnabled;
+        update.IsScheduleDisabled = request.IsScheduleDisabled;
+        update.IsExpensesDisabled = request.IsExpensesDisabled;
         return await SaveArrangementAsync(update);
     }
 
@@ -298,14 +286,7 @@ public sealed class ArrangementGrain : Grain, IArrangementGrain
 
         var update = member.CloneDetails();
         update.IsAdmin = isAdmin;
-        var saved = await _members.UpdateAsync(update, m => m.Id == update.Id);
-        if (!saved.IsSuccess)
-        {
-            return WriteFailed(saved.Status);
-        }
-
-        _state.ReplaceMember(saved.Value);
-        return await PublishAsync();
+        return await CommitAsync(_members.UpdateAsync(update, m => m.Id == update.Id), _state.ReplaceMember);
     }
 
     /// <inheritdoc />
@@ -317,9 +298,8 @@ public sealed class ArrangementGrain : Grain, IArrangementGrain
             return denied;
         }
 
-        var title = ArrangementRules.NormalizeText(request.Title);
-        var description = ArrangementRules.NormalizeText(request.Description);
-        if (ArrangementRules.ValidateDetails(title, description) is { } invalid)
+        var (title, description, invalid) = ArrangementRules.NormalizeDetails(request.Title, request.Description);
+        if (invalid != null)
         {
             return CommandResult.Failure(CommandError.Invalid, invalid);
         }
@@ -376,14 +356,9 @@ public sealed class ArrangementGrain : Grain, IArrangementGrain
     public async Task<CommandResult> AddTimeOptionAsync(Guid userId, AddTimeOptionRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
-        if (_state.CheckScheduleEnabled(userId) is { } denied)
+        if (_state.CheckCanEditTimes(userId) is { } denied)
         {
             return denied;
-        }
-
-        if (!_state.Arrangement.AllowNewTimes && !_state.FindMember(userId)!.IsAdmin)
-        {
-            return CommandResult.Failure(CommandError.Forbidden, "Only admins can add new times.");
         }
 
         var begin = ArrangementRules.TruncateToMinute(request.DateBegin);
@@ -413,27 +388,15 @@ public sealed class ArrangementGrain : Grain, IArrangementGrain
             CreatedByUserId = _state.FindMember(userId)!.UserId,
         };
 
-        var added = await _timeOptions.AddAsync(option);
-        if (!added.IsSuccess)
-        {
-            return WriteFailed(added.Status);
-        }
-
-        _state.AddTimeOption(added.Value);
-        return await PublishAsync();
+        return await CommitAsync(_timeOptions.AddAsync(option), _state.AddTimeOption);
     }
 
     /// <inheritdoc />
     public async Task<CommandResult> RemoveTimeOptionAsync(Guid userId, long timeOptionId)
     {
-        if (_state.CheckScheduleEnabled(userId) is { } denied)
+        if (_state.CheckCanEditTimes(userId) is { } denied)
         {
             return denied;
-        }
-
-        if (!_state.Arrangement.AllowNewTimes && !_state.FindMember(userId)!.IsAdmin)
-        {
-            return CommandResult.Failure(CommandError.Forbidden, "Only admins can remove times.");
         }
 
         if (_state.FindTimeOption(timeOptionId) == null)
@@ -441,15 +404,20 @@ public sealed class ArrangementGrain : Grain, IArrangementGrain
             return TimeOptionNotFound();
         }
 
-        // The database cascades the delete to the votes.
-        var deleted = await _timeOptions.DeleteAsync(o => o.Id == timeOptionId);
-        if (!deleted.IsSuccess || deleted.Value.Count == 0)
+        if (_state.Arrangement.FinalTimeOptionId == timeOptionId)
         {
-            return WriteFailed(deleted.IsSuccess ? OperationStatus.NotFound : deleted.Status);
+            // Deleting the pick also changes the arrangement row, so save both together to keep its revision current.
+            var update = _state.Arrangement.CloneDetails();
+            update.FinalTimeOptionId = null;
+            return await CommitAsync(_arrangements.RemovePickedTimeOptionAsync(update, timeOptionId), saved =>
+            {
+                _state.ReplaceArrangement(saved);
+                _state.RemoveTimeOption(timeOptionId);
+            });
         }
 
-        _state.RemoveTimeOption(timeOptionId);
-        return await PublishAsync();
+        // The database cascades the delete to the votes.
+        return await CommitDeleteAsync(_timeOptions.DeleteAsync(o => o.Id == timeOptionId), () => _state.RemoveTimeOption(timeOptionId));
     }
 
     /// <inheritdoc />
@@ -480,14 +448,7 @@ public sealed class ArrangementGrain : Grain, IArrangementGrain
         // An existing vote carries its row version, so a write by a stale activation is refused.
         var vote = existing?.CloneDetails() ?? new Vote { TimeOptionId = timeOptionId, UserId = memberId };
         vote.Answer = answer;
-        var saved = await _votes.AddOrUpdateAsync(vote, v => v.TimeOptionId == timeOptionId && v.UserId == memberId);
-        if (!saved.IsSuccess)
-        {
-            return WriteFailed(saved.Status);
-        }
-
-        _state.SetVote(saved.Value);
-        return await PublishAsync();
+        return await CommitAsync(_votes.AddOrUpdateAsync(vote, v => v.TimeOptionId == timeOptionId && v.UserId == memberId), _state.SetVote);
     }
 
     /// <inheritdoc />
@@ -516,6 +477,7 @@ public sealed class ArrangementGrain : Grain, IArrangementGrain
     /// <inheritdoc />
     public async Task<CommandResult> AddExpenseAsync(Guid userId, ExpenseRequest request)
     {
+        ArgumentNullException.ThrowIfNull(request);
         if (_state.CheckExpensesEnabled(userId) is { } denied)
         {
             return denied;
@@ -532,19 +494,13 @@ public sealed class ArrangementGrain : Grain, IArrangementGrain
             return invalid;
         }
 
-        var added = await _expenses.AddAsync(expense);
-        if (!added.IsSuccess)
-        {
-            return WriteFailed(added.Status);
-        }
-
-        _state.SetExpense(added.Value);
-        return await PublishAsync();
+        return await CommitAsync(_expenses.AddAsync(expense), _state.SetExpense);
     }
 
     /// <inheritdoc />
     public async Task<CommandResult> UpdateExpenseAsync(Guid userId, long expenseId, ExpenseRequest request)
     {
+        ArgumentNullException.ThrowIfNull(request);
         if (_state.CheckExpensesEnabled(userId) is { } denied)
         {
             return denied;
@@ -555,7 +511,7 @@ public sealed class ArrangementGrain : Grain, IArrangementGrain
             return ExpenseNotFound();
         }
 
-        if (existing.PaidByUserId != _state.FindMember(userId)!.UserId && !_state.FindMember(userId)!.IsAdmin)
+        if (!_state.CanEditExpense(userId, existing))
         {
             return CommandResult.Failure(CommandError.Forbidden, "Only the member who paid or an admin can edit this expense.");
         }
@@ -567,14 +523,7 @@ public sealed class ArrangementGrain : Grain, IArrangementGrain
             return invalid;
         }
 
-        var saved = await _expenses.ReplaceAsync(expense);
-        if (!saved.IsSuccess)
-        {
-            return WriteFailed(saved.Status);
-        }
-
-        _state.SetExpense(saved.Value);
-        return await PublishAsync();
+        return await CommitAsync(_expenses.ReplaceAsync(expense), _state.SetExpense);
     }
 
     /// <inheritdoc />
@@ -590,20 +539,13 @@ public sealed class ArrangementGrain : Grain, IArrangementGrain
             return ExpenseNotFound();
         }
 
-        if (existing.PaidByUserId != _state.FindMember(userId)!.UserId && !_state.FindMember(userId)!.IsAdmin)
+        if (!_state.CanEditExpense(userId, existing))
         {
             return CommandResult.Failure(CommandError.Forbidden, "Only the member who paid or an admin can delete this expense.");
         }
 
         // The database cascades the delete to the participations.
-        var deleted = await _expenses.DeleteAsync(e => e.Id == expenseId);
-        if (!deleted.IsSuccess || deleted.Value.Count == 0)
-        {
-            return WriteFailed(deleted.IsSuccess ? OperationStatus.NotFound : deleted.Status);
-        }
-
-        _state.RemoveExpense(expenseId);
-        return await PublishAsync();
+        return await CommitDeleteAsync(_expenses.DeleteAsync(e => e.Id == expenseId), () => _state.RemoveExpense(expenseId));
     }
 
     /// <inheritdoc />
@@ -626,30 +568,16 @@ public sealed class ArrangementGrain : Grain, IArrangementGrain
         }
 
         update.BaseCurrency = currency;
-        var saved = await _arrangements.ChangeBaseCurrencyAsync(update, _state.Arrangement.BaseCurrency);
-        if (!saved.IsSuccess)
-        {
-            return WriteFailed(saved.Status);
-        }
-
-        var rates = saved.Value.ExchangeRates;
-        _state.ReplaceArrangement(saved.Value);
-        _state.ReplaceExchangeRates(rates);
-        return await PublishAsync();
+        return await CommitAsync(_arrangements.ChangeBaseCurrencyAsync(update, _state.Arrangement.BaseCurrency), _state.ReplaceArrangementAndRates);
     }
 
     /// <inheritdoc />
     public async Task<CommandResult> SetExchangeRateAsync(Guid userId, string currency, SetExchangeRateRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
-        if (_state.CheckAdmin(userId) is { } denied)
+        if ((_state.CheckAdmin(userId) ?? _state.CheckExpensesEnabled(userId)) is { } denied)
         {
             return denied;
-        }
-
-        if (_state.CheckExpensesEnabled(userId) is { } expensesDenied)
-        {
-            return expensesDenied;
         }
 
         if (!Currencies.IsKnown(currency) || currency == _state.Arrangement.BaseCurrency)
@@ -682,27 +610,15 @@ public sealed class ArrangementGrain : Grain, IArrangementGrain
         var update = existing?.CloneDetails() ?? new ExchangeRate { ArrangementId = arrangementId, Currency = currency };
         update.Rate = rate;
         update.LossPercent = request.LossPercent;
-        var saved = await _rates.AddOrUpdateAsync(update, r => r.ArrangementId == arrangementId && r.Currency == currency);
-        if (!saved.IsSuccess)
-        {
-            return WriteFailed(saved.Status);
-        }
-
-        _state.SetExchangeRate(saved.Value);
-        return await PublishAsync();
+        return await CommitAsync(_rates.AddOrUpdateAsync(update, r => r.ArrangementId == arrangementId && r.Currency == currency), _state.SetExchangeRate);
     }
 
     /// <inheritdoc />
     public async Task<CommandResult> RemoveCurrencyAsync(Guid userId, string currency)
     {
-        if (_state.CheckAdmin(userId) is { } denied)
+        if ((_state.CheckAdmin(userId) ?? _state.CheckExpensesEnabled(userId)) is { } denied)
         {
             return denied;
-        }
-
-        if (_state.CheckExpensesEnabled(userId) is { } expensesDenied)
-        {
-            return expensesDenied;
         }
 
         if (_state.FindExchangeRate(currency) is not { } existing)
@@ -715,27 +631,15 @@ public sealed class ArrangementGrain : Grain, IArrangementGrain
             return CommandResult.Failure(CommandError.Invalid, "The currency is used by expenses.");
         }
 
-        var deleted = await _rates.DeleteAsync(r => r.Id == existing.Id);
-        if (!deleted.IsSuccess || deleted.Value.Count == 0)
-        {
-            return WriteFailed(deleted.IsSuccess ? OperationStatus.NotFound : deleted.Status);
-        }
-
-        _state.RemoveExchangeRate(currency);
-        return await PublishAsync();
+        return await CommitDeleteAsync(_rates.DeleteAsync(r => r.Id == existing.Id), () => _state.RemoveExchangeRate(currency));
     }
 
     /// <inheritdoc />
     public async Task<CommandResult> RefreshRatesAsync(Guid userId)
     {
-        if (_state.CheckAdmin(userId) is { } denied)
+        if ((_state.CheckAdmin(userId) ?? _state.CheckExpensesEnabled(userId)) is { } denied)
         {
             return denied;
-        }
-
-        if (_state.CheckExpensesEnabled(userId) is { } expensesDenied)
-        {
-            return expensesDenied;
         }
 
         var currencies = _state.Arrangement.ExchangeRates.ConvertAll(r => r.Currency);
@@ -744,29 +648,30 @@ public sealed class ArrangementGrain : Grain, IArrangementGrain
             return _state.Current();
         }
 
-        var arrangementId = _state.Arrangement.Id;
         var latest = await _rateProvider.GetRatesAsync(_state.Arrangement.BaseCurrency, currencies, forceRefresh: true);
-        var changed = false;
+        var updates = new List<ExchangeRate>();
         foreach (var currency in currencies)
         {
-            if (!latest.TryGetValue(currency, out var newRate) || _state.FindExchangeRate(currency) is not { } existing || existing.Rate == newRate)
+            if (latest.TryGetValue(currency, out var newRate) && _state.FindExchangeRate(currency) is { } existing && existing.Rate != newRate)
             {
-                continue;
+                var update = existing.CloneDetails();
+                update.Rate = newRate;
+                updates.Add(update);
             }
-
-            var update = existing.CloneDetails();
-            update.Rate = newRate;
-            var saved = await _rates.AddOrUpdateAsync(update, r => r.ArrangementId == arrangementId && r.Currency == currency);
-            if (!saved.IsSuccess)
-            {
-                return WriteFailed(saved.Status);
-            }
-
-            _state.SetExchangeRate(saved.Value);
-            changed = true;
         }
 
-        return changed ? await PublishAsync() : _state.Current();
+        if (updates.Count == 0)
+        {
+            return _state.Current();
+        }
+
+        return await CommitAsync(_rates.UpdateManyAsync(updates, rate => r => r.Id == rate.Id), saved =>
+        {
+            foreach (var rate in saved)
+            {
+                _state.SetExchangeRate(rate);
+            }
+        });
     }
 
     private async Task<decimal?> SuggestRateAsync(string currency)
@@ -777,7 +682,6 @@ public sealed class ArrangementGrain : Grain, IArrangementGrain
 
     private CommandResult? Fill(Expense expense, ExpenseRequest request)
     {
-        ArgumentNullException.ThrowIfNull(request);
         request = request with { Description = ArrangementRules.NormalizeText(request.Description) };
         if (ExpenseRules.Validate(request) is { } invalid)
         {
@@ -822,6 +726,32 @@ public sealed class ArrangementGrain : Grain, IArrangementGrain
         return CommandResult.Failure(CommandError.NotFound, "The user does not exist.");
     }
 
+    private async Task<CommandResult> CommitAsync<T>(Task<RepositoryResult<T>> write, Action<T> apply)
+        where T : class
+    {
+        var written = await write;
+        if (!written.IsSuccess)
+        {
+            return WriteFailed(written.Status);
+        }
+
+        apply(written.Value);
+        return await PublishAsync();
+    }
+
+    private async Task<CommandResult> CommitDeleteAsync<T>(Task<RepositoryResult<IReadOnlyCollection<T>>> delete, Action apply)
+        where T : class
+    {
+        var deleted = await delete;
+        if (!deleted.IsSuccess || deleted.Value.Count == 0)
+        {
+            return WriteFailed(deleted.IsSuccess ? OperationStatus.NotFound : deleted.Status);
+        }
+
+        apply();
+        return await PublishAsync();
+    }
+
     private async Task<CommandResult> PublishAsync()
     {
         var result = _state.Changed();
@@ -837,16 +767,9 @@ public sealed class ArrangementGrain : Grain, IArrangementGrain
         return CommandResult.Failure(CommandError.Conflict, "Someone else changed this at the same time. Reload and try again.");
     }
 
-    private async Task<CommandResult> SaveArrangementAsync(Arrangement update)
+    private Task<CommandResult> SaveArrangementAsync(Arrangement update)
     {
-        var saved = await _arrangements.UpdateAsync(update);
-        if (!saved.IsSuccess)
-        {
-            return WriteFailed(saved.Status);
-        }
-
-        _state.ReplaceArrangement(saved.Value);
-        return await PublishAsync();
+        return CommitAsync(_arrangements.UpdateAsync(update), _state.ReplaceArrangement);
     }
 
     private DateTime Now()

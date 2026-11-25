@@ -169,9 +169,20 @@ else
     {
         busy = true;
         error = null;
-        var path = action == null ? $"api/arrangements/{Id}" : $"api/arrangements/{Id}/{action}";
-        var result = await Api.SendAsync<ArrangementSnapshot>(method, path, body);
-        busy = false;
+
+        // Child components call this through a plain delegate, which does not re-render this page by itself.
+        StateHasChanged();
+        ApiResult<ArrangementSnapshot> result;
+        try
+        {
+            var path = action == null ? ApiRoutes.Arrangement(Id) : $"{ApiRoutes.Arrangement(Id)}/{action}";
+            result = await Api.SendAsync<ArrangementSnapshot>(method, path, body);
+        }
+        finally
+        {
+            busy = false;
+        }
+
         if (result.IsSuccess)
         {
             Show(result.Value);
@@ -181,7 +192,7 @@ else
             error = result.Error;
         }
 
-        // Child components call this through a plain delegate, which does not re-render this page by itself.
+        // Again, for the result.
         StateHasChanged();
         return result.IsSuccess;
     }

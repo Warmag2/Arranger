@@ -14,6 +14,6 @@ public sealed record ExchangeRateSnapshot(decimal? Rate, decimal LossPercent)
     /// <returns>The rate used for the balances, or <b>null</b> when the rate is not known.</returns>
     public decimal? EffectiveRate()
     {
-        return Rate * (1 - (LossPercent / 100));
+        return Rate * (1 - LossPercent / 100);
     }
 }

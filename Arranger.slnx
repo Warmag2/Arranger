@@ -14,7 +14,7 @@
   <Folder Name="/Solution Items/">
     <File Path=".editorconfig" />
     <File Path="Directory.Build.props" />
-    <File Path="docker-compose.dev.yml" />
+    <File Path="infra/docker-compose.dev.yml" />
     <File Path="Plan.md" />
   </Folder>
 </Solution>

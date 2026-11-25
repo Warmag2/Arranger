@@ -1,14 +1,19 @@
 @if (!string.IsNullOrEmpty(Message))
 {
-    var statusMessageClass = Message.StartsWith("Error", StringComparison.Ordinal) ? "error" : "success";
-    <div class="@statusMessageClass" role="alert">
+    <div class="@(IsError ? "error" : "success")" role="alert">
         @Message
     </div>
 }
 
 @code {
     /// <summary>
-    /// The message. Messages starting with "Error" are shown as errors.
+    /// Whether the message is shown as an error instead of a success.
+    /// </summary>
+    [Parameter]
+    public bool IsError { get; set; }
+
+    /// <summary>
+    /// The message. Nothing is shown when it is empty.
     /// </summary>
     [Parameter]
     public string? Message { get; set; }

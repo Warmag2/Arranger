@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using Faemiyah.Arranger.Contracts.Arrangements;
 
 namespace Faemiyah.Arranger.Client.Services;
@@ -21,6 +20,22 @@ public readonly record struct ScheduleLine(string? Date, string? Time);
 public static class ScheduleFormat
 {
     /// <summary>
+    /// The style class of a cell, which colours it by the answer.
+    /// </summary>
+    /// <param name="answer">The answer, or <b>null</b> for none.</param>
+    /// <returns>The class, or <b>null</b> for none.</returns>
+    public static string? CssClass(VoteAnswer? answer)
+    {
+        return answer switch
+        {
+            VoteAnswer.Yes => "yes",
+            VoteAnswer.Maybe => "maybe",
+            VoteAnswer.No => "no",
+            _ => null,
+        };
+    }
+
+    /// <summary>
     /// Describe a time option for the viewer as a short stack of lines. Whole-day options show their UTC date; timed
     /// ones are converted to the viewer's time zone. Single-day options show the date on top with the time or "All day"
     /// smaller underneath. A multi-day timed option shows the start date and its time on one line and the end date and
@@ -36,20 +51,20 @@ public static class ScheduleFormat
         if (option.IsWholeDay)
         {
             return option.DateEnd is { } wholeEnd
-                ? [new ScheduleLine(FormatDate(option.DateBegin), null), new ScheduleLine(null, "to"), new ScheduleLine(FormatDate(wholeEnd), null)]
-                : [new ScheduleLine(FormatDate(option.DateBegin), null), new ScheduleLine(null, "All day")];
+                ? [new ScheduleLine(DisplayFormat.Date(option.DateBegin), null), new ScheduleLine(null, "to"), new ScheduleLine(DisplayFormat.Date(wholeEnd), null)]
+                : [new ScheduleLine(DisplayFormat.Date(option.DateBegin), null), new ScheduleLine(null, "All day")];
         }
 
         var begin = ToLocal(option.DateBegin, timeZone);
         if (option.DateEnd is not { } utcEnd)
         {
-            return [new ScheduleLine(FormatDate(begin), null), new ScheduleLine(null, "from " + FormatTime(begin))];
+            return [new ScheduleLine(DisplayFormat.Date(begin), null), new ScheduleLine(null, "from " + DisplayFormat.Time(begin))];
         }
 
         var end = ToLocal(utcEnd, timeZone);
         return end.Date == begin.Date
-            ? [new ScheduleLine(FormatDate(begin), null), new ScheduleLine(null, $"{FormatTime(begin)}–{FormatTime(end)}")]
-            : [new ScheduleLine(FormatDate(begin), FormatTime(begin)), new ScheduleLine(null, "to"), new ScheduleLine(FormatDate(end), FormatTime(end))];
+            ? [new ScheduleLine(DisplayFormat.Date(begin), null), new ScheduleLine(null, $"{DisplayFormat.Time(begin)}–{DisplayFormat.Time(end)}")]
+            : [new ScheduleLine(DisplayFormat.Date(begin), DisplayFormat.Time(begin)), new ScheduleLine(null, "to"), new ScheduleLine(DisplayFormat.Date(end), DisplayFormat.Time(end))];
     }
 
     /// <summary>
@@ -65,20 +80,20 @@ public static class ScheduleFormat
         if (option.IsWholeDay)
         {
             return option.DateEnd is { } wholeEnd
-                ? $"{FormatDate(option.DateBegin)} – {FormatDate(wholeEnd)}"
-                : FormatDate(option.DateBegin);
+                ? $"{DisplayFormat.Date(option.DateBegin)} – {DisplayFormat.Date(wholeEnd)}"
+                : DisplayFormat.Date(option.DateBegin);
         }
 
         var begin = ToLocal(option.DateBegin, timeZone);
         if (option.DateEnd is not { } utcEnd)
         {
-            return $"{FormatDate(begin)} from {FormatTime(begin)}";
+            return $"{DisplayFormat.Date(begin)} from {DisplayFormat.Time(begin)}";
         }
 
         var end = ToLocal(utcEnd, timeZone);
         return end.Date == begin.Date
-            ? $"{FormatDate(begin)} {FormatTime(begin)}–{FormatTime(end)}"
-            : $"{FormatDate(begin)} {FormatTime(begin)} – {FormatDate(end)} {FormatTime(end)}";
+            ? $"{DisplayFormat.Date(begin)} {DisplayFormat.Time(begin)}–{DisplayFormat.Time(end)}"
+            : $"{DisplayFormat.Date(begin)} {DisplayFormat.Time(begin)} – {DisplayFormat.Date(end)} {DisplayFormat.Time(end)}";
     }
 
     /// <summary>
@@ -115,15 +130,5 @@ public static class ScheduleFormat
     private static DateTime ToLocal(DateTime utc, TimeZoneInfo timeZone)
     {
         return TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(utc, DateTimeKind.Utc), timeZone);
-    }
-
-    private static string FormatDate(DateTime date)
-    {
-        return date.ToString("ddd d.M.yyyy", CultureInfo.InvariantCulture);
-    }
-
-    private static string FormatTime(DateTime time)
-    {
-        return time.ToString("HH:mm", CultureInfo.InvariantCulture);
     }
 }

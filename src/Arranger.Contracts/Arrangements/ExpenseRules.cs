@@ -101,9 +101,9 @@ public static class ExpenseRules
             return $"{request.Currency} amounts have at most {decimals} decimals.";
         }
 
-        if (request.Date.Year < ArrangementRules.MinTimeOptionYear || request.Date.Year > ArrangementRules.MaxTimeOptionYear)
+        if (request.Date.Year < ArrangementRules.MinYear || request.Date.Year > ArrangementRules.MaxYear)
         {
-            return $"The date must be between the years {ArrangementRules.MinTimeOptionYear} and {ArrangementRules.MaxTimeOptionYear}.";
+            return $"The date must be between the years {ArrangementRules.MinYear} and {ArrangementRules.MaxYear}.";
         }
 
         var participants = request.ParticipantUserIds;

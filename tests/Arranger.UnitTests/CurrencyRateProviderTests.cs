@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Net;
 using System.Net.Http;
 using System.Text;
@@ -29,16 +28,6 @@ public class CurrencyRateProviderTests
     }
 
     [Test]
-    public async Task GetRates_LeavesOutCurrenciesTheUpstreamDoesNotCover()
-    {
-        var provider = NewProvider(out _, out _, Success("USD", 1m, ("EUR", 0.9m)));
-
-        var rates = await provider.GetRatesAsync("EUR", ["JPY", "USD"], forceRefresh: false);
-
-        rates.Keys.Should().BeEquivalentTo("USD");
-    }
-
-    [Test]
     public async Task GetRates_IgnoresUnknownCurrencyCodesFromTheUpstream()
     {
         var provider = NewProvider(out _, out _, Success("USD", 1m, ("EUR", 0.9m), ("ZZZ", 5m)));
@@ -49,34 +38,6 @@ public class CurrencyRateProviderTests
     }
 
     [Test]
-    public async Task GetRates_ServesTheCacheUntilItIsStale()
-    {
-        var provider = NewProvider(out var handler, out var time, Success("USD", 1m, ("EUR", 0.9m)));
-
-        await provider.GetRatesAsync("USD", ["EUR"], forceRefresh: false);
-        time.Advance(TimeSpan.FromHours(11));
-        await provider.GetRatesAsync("USD", ["EUR"], forceRefresh: false);
-
-        handler.Calls.Should().Be(1);
-
-        time.Advance(TimeSpan.FromHours(2));
-        await provider.GetRatesAsync("USD", ["EUR"], forceRefresh: false);
-
-        handler.Calls.Should().Be(2);
-    }
-
-    [Test]
-    public async Task GetRates_RefetchesWhenRefreshIsForcedEvenWhenFresh()
-    {
-        var provider = NewProvider(out var handler, out _, Success("USD", 1m, ("EUR", 0.9m)));
-
-        await provider.GetRatesAsync("USD", ["EUR"], forceRefresh: false);
-        await provider.GetRatesAsync("USD", ["EUR"], forceRefresh: true);
-
-        handler.Calls.Should().Be(2);
-    }
-
-    [Test]
     public async Task GetRates_KeepsTheLastKnownRatesWhenAFetchFails()
     {
         var handler = new StubHandler(call => call == 1
@@ -84,13 +45,73 @@ public class CurrencyRateProviderTests
             : new HttpResponseMessage(HttpStatusCode.ServiceUnavailable));
         var time = new MutableTimeProvider(Start);
         var provider = new CurrencyRateProvider(new StubHttpClientFactory(handler), time, NullLogger<CurrencyRateProvider>.Instance);
-
         await provider.GetRatesAsync("USD", ["EUR"], forceRefresh: false);
         time.Advance(TimeSpan.FromHours(13));
+
         var rates = await provider.GetRatesAsync("USD", ["EUR"], forceRefresh: false);
 
         handler.Calls.Should().Be(2);
         rates["EUR"].Should().Be(0.9m);
+    }
+
+    [Test]
+    public async Task GetRates_LeavesOutCurrenciesTheUpstreamDoesNotCover()
+    {
+        var provider = NewProvider(out _, out _, Success("USD", 1m, ("EUR", 0.9m)));
+
+        var rates = await provider.GetRatesAsync("EUR", ["JPY", "USD"], forceRefresh: false);
+
+        rates.Keys.Should().BeEquivalentTo("USD");
+    }
+
+    [Test]
+    public async Task GetRates_PropagatesCancellationByTheCaller()
+    {
+        using var cancellation = new CancellationTokenSource();
+        var handler = new StubHandler(_ =>
+        {
+            cancellation.Cancel();
+            throw new TaskCanceledException();
+        });
+        var provider = new CurrencyRateProvider(new StubHttpClientFactory(handler), new MutableTimeProvider(Start), NullLogger<CurrencyRateProvider>.Instance);
+
+        var fetch = () => provider.GetRatesAsync("USD", ["EUR"], forceRefresh: false, cancellation.Token);
+
+        await fetch.Should().ThrowAsync<OperationCanceledException>();
+    }
+
+    [Test]
+    public async Task GetRates_RefetchesWhenRefreshIsForcedEvenWhenFresh()
+    {
+        var provider = NewProvider(out var handler, out _, Success("USD", 1m, ("EUR", 0.9m)));
+        await provider.GetRatesAsync("USD", ["EUR"], forceRefresh: false);
+
+        await provider.GetRatesAsync("USD", ["EUR"], forceRefresh: true);
+
+        handler.Calls.Should().Be(2);
+    }
+
+    [Test]
+    public async Task GetRates_RefetchesWhenTheCacheIsStale()
+    {
+        var provider = NewProvider(out var handler, out var time, Success("USD", 1m, ("EUR", 0.9m)));
+        await provider.GetRatesAsync("USD", ["EUR"], forceRefresh: false);
+        time.Advance(TimeSpan.FromHours(13));
+
+        await provider.GetRatesAsync("USD", ["EUR"], forceRefresh: false);
+
+        handler.Calls.Should().Be(2);
+    }
+
+    [Test]
+    public async Task GetRates_ReturnsNothingForAnEmptyRequestWithoutFetching()
+    {
+        var provider = NewProvider(out var handler, out _, Success("USD", 1m, ("EUR", 0.9m)));
+
+        var rates = await provider.GetRatesAsync("USD", [], forceRefresh: false);
+
+        rates.Should().BeEmpty();
+        handler.Calls.Should().Be(0);
     }
 
     [Test]
@@ -104,14 +125,26 @@ public class CurrencyRateProviderTests
     }
 
     [Test]
-    public async Task GetRates_ReturnsNothingForAnEmptyRequestWithoutFetching()
+    public async Task GetRates_ServesTheCacheWhileFresh()
     {
-        var provider = NewProvider(out var handler, out _, Success("USD", 1m, ("EUR", 0.9m)));
+        var provider = NewProvider(out var handler, out var time, Success("USD", 1m, ("EUR", 0.9m)));
+        await provider.GetRatesAsync("USD", ["EUR"], forceRefresh: false);
+        time.Advance(TimeSpan.FromHours(11));
 
-        var rates = await provider.GetRatesAsync("USD", [], forceRefresh: false);
+        await provider.GetRatesAsync("USD", ["EUR"], forceRefresh: false);
 
-        rates.Should().BeEmpty();
-        handler.Calls.Should().Be(0);
+        handler.Calls.Should().Be(1);
+    }
+
+    private static HttpResponseMessage Clone(HttpResponseMessage response)
+    {
+        var copy = new HttpResponseMessage(response.StatusCode);
+        if (response.Content is { } content)
+        {
+            copy.Content = new StringContent(content.ReadAsStringAsync().GetAwaiter().GetResult(), Encoding.UTF8, "application/json");
+        }
+
+        return copy;
     }
 
     private static CurrencyRateProvider NewProvider(out StubHandler handler, out MutableTimeProvider time, HttpResponseMessage response)
@@ -138,15 +171,24 @@ public class CurrencyRateProviderTests
         };
     }
 
-    private static HttpResponseMessage Clone(HttpResponseMessage response)
+    private sealed class MutableTimeProvider : TimeProvider
     {
-        var copy = new HttpResponseMessage(response.StatusCode);
-        if (response.Content is { } content)
+        private DateTimeOffset _now;
+
+        public MutableTimeProvider(DateTimeOffset start)
         {
-            copy.Content = new StringContent(content.ReadAsStringAsync().GetAwaiter().GetResult(), Encoding.UTF8, "application/json");
+            _now = start;
         }
 
-        return copy;
+        public void Advance(TimeSpan by)
+        {
+            _now += by;
+        }
+
+        public override DateTimeOffset GetUtcNow()
+        {
+            return _now;
+        }
     }
 
     private sealed class StubHandler : HttpMessageHandler
@@ -179,26 +221,6 @@ public class CurrencyRateProviderTests
         public HttpClient CreateClient(string name)
         {
             return new HttpClient(_handler, disposeHandler: false) { BaseAddress = new Uri("https://open.er-api.com/") };
-        }
-    }
-
-    private sealed class MutableTimeProvider : TimeProvider
-    {
-        private DateTimeOffset _now;
-
-        public MutableTimeProvider(DateTimeOffset start)
-        {
-            _now = start;
-        }
-
-        public void Advance(TimeSpan by)
-        {
-            _now += by;
-        }
-
-        public override DateTimeOffset GetUtcNow()
-        {
-            return _now;
         }
     }
 }

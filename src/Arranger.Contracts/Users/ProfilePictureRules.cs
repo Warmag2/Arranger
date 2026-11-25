@@ -25,9 +25,29 @@ public static class ProfilePictureRules
     public const int MaxDimension = 1024;
 
     /// <summary>
+    /// The MIME type of a PNG picture.
+    /// </summary>
+    public const string Png = "image/png";
+
+    /// <summary>
+    /// The MIME type of a JPEG picture.
+    /// </summary>
+    public const string Jpeg = "image/jpeg";
+
+    /// <summary>
+    /// The MIME type of a WebP picture.
+    /// </summary>
+    public const string Webp = "image/webp";
+
+    /// <summary>
     /// The accepted upload formats, for the file picker.
     /// </summary>
-    public const string AcceptedContentTypes = "image/png,image/jpeg,image/webp";
+    public const string AcceptedContentTypes = $"{Png},{Jpeg},{Webp}";
+
+    /// <summary>
+    /// The maximum length of a stored MIME type, with room for formats added later.
+    /// </summary>
+    public const int ContentTypeMaxLength = 32;
 
     /// <summary>
     /// Detect the image format from the file signature.
@@ -42,19 +62,19 @@ public static class ProfilePictureRules
     {
         if (data.StartsWith((ReadOnlySpan<byte>)[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]))
         {
-            return "image/png";
+            return Png;
         }
 
         if (data.StartsWith((ReadOnlySpan<byte>)[0xFF, 0xD8, 0xFF]))
         {
-            return "image/jpeg";
+            return Jpeg;
         }
 
         if (data.Length >= 12
             && data[..4].SequenceEqual("RIFF"u8)
             && data.Slice(8, 4).SequenceEqual("WEBP"u8))
         {
-            return "image/webp";
+            return Webp;
         }
 
         return null;
@@ -71,22 +91,13 @@ public static class ProfilePictureRules
     /// <returns>The width and height, or <b>null</b> when they cannot be read.</returns>
     public static (int Width, int Height)? ReadDimensions(ReadOnlySpan<byte> data)
     {
-        if (data.StartsWith((ReadOnlySpan<byte>)[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]))
+        return DetectContentType(data) switch
         {
-            return ReadPngDimensions(data);
-        }
-
-        if (data.StartsWith((ReadOnlySpan<byte>)[0xFF, 0xD8, 0xFF]))
-        {
-            return ReadJpegDimensions(data);
-        }
-
-        if (data.Length >= 12 && data[..4].SequenceEqual("RIFF"u8) && data.Slice(8, 4).SequenceEqual("WEBP"u8))
-        {
-            return ReadWebpDimensions(data);
-        }
-
-        return null;
+            Png => ReadPngDimensions(data),
+            Jpeg => ReadJpegDimensions(data),
+            Webp => ReadWebpDimensions(data),
+            _ => null,
+        };
     }
 
     private static (int Width, int Height)? ReadPngDimensions(ReadOnlySpan<byte> data)
@@ -121,7 +132,7 @@ public static class ProfilePictureRules
             }
 
             // Markers without a payload: TEM and the standalone SOI/EOI/RSTn range.
-            if (marker == 0x01 || (marker >= 0xD0 && marker <= 0xD9))
+            if (marker == 0x01 || marker >= 0xD0 && marker <= 0xD9)
             {
                 pos += 2;
                 continue;

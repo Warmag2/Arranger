@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
+using Faemiyah.Arranger.Contracts;
+using Faemiyah.Arranger.Contracts.Arrangements;
 using Faemiyah.Repository.Entities;
 
 namespace Faemiyah.Arranger.Data.Entities;
@@ -14,27 +16,17 @@ namespace Faemiyah.Arranger.Data.Entities;
 public class Arrangement : EntityBaseWithUuid<long>
 {
     /// <summary>
-    /// The maximum length of <see cref="Title"/>.
-    /// </summary>
-    public const int TitleMaxLength = 200;
-
-    /// <summary>
-    /// The maximum length of <see cref="Description"/>.
-    /// </summary>
-    public const int DescriptionMaxLength = 2000;
-
-    /// <summary>
     /// The title.
     /// </summary>
     [Required]
-    [MaxLength(TitleMaxLength)]
+    [MaxLength(ArrangementRules.TitleMaxLength)]
     public string Title { get; set; } = string.Empty;
 
     /// <summary>
     /// The description, possibly empty.
     /// </summary>
     [Required]
-    [MaxLength(DescriptionMaxLength)]
+    [MaxLength(ArrangementRules.DescriptionMaxLength)]
     public string Description { get; set; } = string.Empty;
 
     /// <summary>
@@ -56,8 +48,8 @@ public class Arrangement : EntityBaseWithUuid<long>
     /// The ISO 4217 currency balances are settled in.
     /// </summary>
     [Required]
-    [MaxLength(3)]
-    public string BaseCurrency { get; set; } = "EUR";
+    [MaxLength(Currencies.CodeLength)]
+    public string BaseCurrency { get; set; } = Currencies.Default;
 
     /// <summary>
     /// The picked time option. Closing the schedule confirms it.
@@ -70,7 +62,7 @@ public class Arrangement : EntityBaseWithUuid<long>
     public bool AllowNewUsers { get; set; }
 
     /// <summary>
-    /// Whether new times are accepted from non-admin users.
+    /// Whether non-admin members may add and remove times.
     /// </summary>
     public bool AllowNewTimes { get; set; }
 

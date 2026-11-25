@@ -1,11 +1,10 @@
+@inherits ArrangementComponentBase
 @inject CurrentUser CurrentUser
 @inject IJSRuntime JS
 
 @{
-    var me = Snapshot.FindMember(UserId);
-    var isAdmin = me?.IsAdmin == true;
-    var canEdit = me != null && !Snapshot.IsScheduleDisabled;
-    var canAddTime = canEdit && (isAdmin || Snapshot.AllowNewTimes);
+    var canEdit = Me != null && !Snapshot.IsScheduleDisabled;
+    var canAddTime = canEdit && (IsAdmin || Snapshot.AllowNewTimes);
     var final = Snapshot.TimeOptions.FirstOrDefault(o => o.Id == Snapshot.FinalTimeOptionId);
 }
 
@@ -20,15 +19,15 @@
         {
             <span>The time is <strong>@ScheduleFormat.DescribeInline(final, CurrentUser.TimeZone)</strong>.</span>
         }
-        @if (isAdmin)
+        @if (IsAdmin)
         {
             <button class="button button-submit" disabled="@Busy" @onclick="ReopenAsync">Reopen</button>
         }
     </div>
 }
-else if (final != null || isAdmin)
+else if (final != null || IsAdmin)
 {
-    @if (isAdmin)
+    @if (IsAdmin)
     {
         <div>
             <button class="button button-submit" disabled="@Busy" title="Stop changes and confirm the picked time" @onclick="CloseAsync">Close schedule</button>
@@ -52,11 +51,11 @@ else if (final != null || isAdmin)
 }
 else
 {
-    <div class="schedule">
+    <div class="scroll schedule">
         <table>
             <thead>
                 <tr>
-                    <th scope="col"></th>
+                    <th scope="col"><span class="visually-hidden">Member</span></th>
                     @foreach (var option in Snapshot.TimeOptions)
                     {
                         <th scope="col" class="@FinalClass(option)">
@@ -85,13 +84,13 @@ else
                     var isMine = member.UserId == UserId;
                     <tr>
                         <th scope="row">
-                            <UserAvatar UserId="member.UserId" Size="24" />
+                            <UserAvatar UserId="member.UserId" UserName="@member.UserName" PictureVersion="member.PictureVersion" Size="24" />
                             @member.UserName
                         </th>
                         @foreach (var option in Snapshot.TimeOptions)
                         {
                             var answer = option.FindAnswer(member.UserId);
-                            <td class="@CellClass(answer) @FinalClass(option)">
+                            <td class="@ScheduleFormat.CssClass(answer) @FinalClass(option)">
                                 @if (isMine && canEdit)
                                 {
                                     <button class="answer" disabled="@Busy" title="Tap to change your answer" @onclick="() => VoteAsync(option, answer)">
@@ -129,13 +128,13 @@ else
                         @foreach (var option in Snapshot.TimeOptions)
                         {
                             <td>
-                                @if (isAdmin)
+                                @if (IsAdmin)
                                 {
                                     var isPicked = option.Id == Snapshot.FinalTimeOptionId;
                                     <button class="button" aria-pressed="@(isPicked ? "true" : "false")" disabled="@Busy" title="@(isPicked ? "Clear the pick" : "Pick this time")"
                                             @onclick="() => PickAsync(isPicked ? null : option.Id)">Pick</button>
                                 }
-                                <button class="button button-delete" disabled="@Busy" title="Remove this time" @onclick="() => RemoveAsync(option)">×</button>
+                                <button class="button button-delete" disabled="@Busy" title="Remove this time" aria-label="Remove this time" @onclick="() => RemoveAsync(option)">×</button>
                             </td>
                         }
                     </tr>
@@ -187,53 +186,23 @@ else if (canAddTime)
 }
 
 @code {
+    /// <summary>
+    /// The start time a new time option is given.
+    /// </summary>
+    private static readonly TimeOnly DefaultStart = new(18, 0);
+
     private DateOnly date;
     private DateOnly? endDate;
-    private TimeOnly start = new(18, 0);
+    private TimeOnly start = DefaultStart;
     private TimeOnly? end;
     private bool isWholeDay;
     private bool adding;
     private string? formError;
 
-    /// <summary>
-    /// The arrangement.
-    /// </summary>
-    [Parameter, EditorRequired]
-    public ArrangementSnapshot Snapshot { get; set; } = null!;
-
-    /// <summary>
-    /// The viewer's user ID.
-    /// </summary>
-    [Parameter, EditorRequired]
-    public Guid UserId { get; set; }
-
-    /// <summary>
-    /// Whether a command is in progress.
-    /// </summary>
-    [Parameter]
-    public bool Busy { get; set; }
-
-    /// <summary>
-    /// Runs a command: the method, the path under the arrangement, and the body.
-    /// </summary>
-    [Parameter, EditorRequired]
-    public Func<HttpMethod, string, object?, Task> Run { get; set; } = null!;
-
     /// <inheritdoc />
     protected override void OnInitialized()
     {
-        date = DateOnly.FromDateTime(CurrentUser.ToLocalTime(DateTime.UtcNow));
-    }
-
-    private static string? CellClass(VoteAnswer? answer)
-    {
-        return answer switch
-        {
-            VoteAnswer.Yes => "yes",
-            VoteAnswer.Maybe => "maybe",
-            VoteAnswer.No => "no",
-            _ => null,
-        };
+        date = CurrentUser.Today();
     }
 
     private string? FinalClass(TimeOptionSnapshot option)
@@ -253,25 +222,25 @@ else if (canAddTime)
 
     private async Task CloseAsync()
     {
-        if (Snapshot.FinalTimeOptionId != null || await JS.InvokeAsync<bool>("confirm", "Close the schedule without picking a time?"))
+        if (Snapshot.FinalTimeOptionId != null || await JS.ConfirmAsync("Close the schedule without picking a time?"))
         {
-            await SetScheduleEnabledAsync(false);
+            await SetScheduleDisabledAsync(true);
         }
     }
 
     private Task ReopenAsync()
     {
-        return SetScheduleEnabledAsync(true);
+        return SetScheduleDisabledAsync(false);
     }
 
-    private Task SetScheduleEnabledAsync(bool isEnabled)
+    private Task SetScheduleDisabledAsync(bool isDisabled)
     {
-        return Run(HttpMethod.Put, "tabs", new SetTabsRequest(isEnabled, !Snapshot.IsExpensesDisabled));
+        return Run(HttpMethod.Put, "tabs", new SetTabsRequest(isDisabled, Snapshot.IsExpensesDisabled));
     }
 
     private async Task RemoveAsync(TimeOptionSnapshot option)
     {
-        if (option.Votes.Count == 0 || await JS.InvokeAsync<bool>("confirm", "Remove this time and its answers?"))
+        if (option.Votes.Count == 0 || await JS.ConfirmAsync("Remove this time and its answers?"))
         {
             await Run(HttpMethod.Delete, $"time-options/{option.Id}", null);
         }
@@ -283,9 +252,9 @@ else if (canAddTime)
         formError = request == null
             ? "That time does not exist in your time zone because of a daylight saving change."
             : ArrangementRules.ValidateTimeOption(request.DateBegin, request.DateEnd, request.IsWholeDay);
-        if (formError == null)
+        if (formError == null && await Run(HttpMethod.Post, "time-options", request))
         {
-            await Run(HttpMethod.Post, "time-options", request);
+            adding = false;
         }
     }
 

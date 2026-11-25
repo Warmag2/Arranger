@@ -5,19 +5,18 @@
 
 <PageTitle>Arranger</PageTitle>
 
-@if (error != null)
-{
-    <div class="error">@error</div>
-}
-
 <a class="button button-submit" href="new">New</a>
 
 <section>
-    <h2>
+    <h1>
         My arrangements
-    </h2>
+    </h1>
 
-    @if (arrangements == null)
+    @if (error != null)
+    {
+        <div class="error">@error</div>
+    }
+    else if (arrangements == null)
     {
         <p>Loading…</p>
     }
@@ -43,21 +42,10 @@
                         <tr>
                             <td><a href="@arrangement.Id">@arrangement.Title</a></td>
                             <td>
-                                @if (arrangement.IsOwner)
-                                {
-                                    <span class="badge badge-owner">Owner</span>
-                                }
-                                else if (arrangement.IsAdmin)
-                                {
-                                    <span class="badge badge-admin">Admin</span>
-                                }
-                                else
-                                {
-                                    <span class="badge badge-member">Member</span>
-                                }
+                                <RoleBadge IsOwner="arrangement.IsOwner" IsAdmin="arrangement.IsAdmin" ShowMember="true" />
                             </td>
                             <td class="number">@arrangement.MemberCount</td>
-                            <td>@CurrentUser.ToLocalTime(arrangement.CreatedAt).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)</td>
+                            <td>@DisplayFormat.Date(CurrentUser.ToLocalTime(arrangement.CreatedAt))</td>
                         </tr>
                     }
                 </tbody>
@@ -74,8 +62,8 @@
     protected override async Task OnInitializedAsync()
     {
         await CurrentUser.GetSettingsAsync();
-        var result = await Api.GetAsync<List<ArrangementSummary>>("api/arrangements");
-        arrangements = result.Value ?? [];
+        var result = await Api.GetAsync<List<ArrangementSummary>>(ApiRoutes.Arrangements);
+        arrangements = result.Value;
         error = result.Error;
     }
 }

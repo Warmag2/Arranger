@@ -10,6 +10,11 @@ namespace Faemiyah.Arranger.Contracts.Arrangements;
 public static class ExpenseMath
 {
     /// <summary>
+    /// The description of a suggested payment.
+    /// </summary>
+    public const string PaymentDescription = "Payment";
+
+    /// <summary>
     /// Split an expense equally. Shares are in the currency's smallest unit; leftover units go one each to the
     /// participants in user ID order, so the shares always add up to the amount.
     /// </summary>
@@ -21,7 +26,7 @@ public static class ExpenseMath
         var unit = Unit(expense.Currency);
         var count = expense.ParticipantUserIds.Count;
         var share = decimal.Floor(expense.Amount / count / unit) * unit;
-        var leftover = (int)((expense.Amount - (share * count)) / unit);
+        var leftover = (int)((expense.Amount - share * count) / unit);
         return expense.ParticipantUserIds
             .Order()
             .Select((userId, index) => (userId, index))
@@ -36,23 +41,7 @@ public static class ExpenseMath
     public static IReadOnlyDictionary<string, Dictionary<Guid, decimal>> Balances(IEnumerable<ExpenseSnapshot> expenses)
     {
         ArgumentNullException.ThrowIfNull(expenses);
-        var balances = new SortedDictionary<string, Dictionary<Guid, decimal>>(StringComparer.Ordinal);
-        foreach (var expense in expenses)
-        {
-            if (!balances.TryGetValue(expense.Currency, out var users))
-            {
-                users = [];
-                balances[expense.Currency] = users;
-            }
-
-            users[expense.PaidByUserId] = users.GetValueOrDefault(expense.PaidByUserId) + expense.Amount;
-            foreach (var (userId, share) in Shares(expense))
-            {
-                users[userId] = users.GetValueOrDefault(userId) - share;
-            }
-        }
-
-        return balances;
+        return SumByCurrency(expenses, e => Shares(e).Select(s => KeyValuePair.Create(s.Key, -s.Value)).Prepend(KeyValuePair.Create(e.PaidByUserId, e.Amount)));
     }
 
     /// <summary>
@@ -63,9 +52,7 @@ public static class ExpenseMath
     public static IReadOnlyDictionary<string, Dictionary<Guid, decimal>> Spent(IEnumerable<ExpenseSnapshot> expenses)
     {
         ArgumentNullException.ThrowIfNull(expenses);
-        return expenses
-            .GroupBy(e => e.Currency, StringComparer.Ordinal)
-            .ToDictionary(c => c.Key, c => c.GroupBy(e => e.PaidByUserId).ToDictionary(u => u.Key, u => u.Sum(e => e.Amount)), StringComparer.Ordinal);
+        return SumByCurrency(expenses, e => [KeyValuePair.Create(e.PaidByUserId, e.Amount)]);
     }
 
     /// <summary>
@@ -77,22 +64,7 @@ public static class ExpenseMath
     public static IReadOnlyDictionary<string, Dictionary<Guid, decimal>> Received(IEnumerable<ExpenseSnapshot> expenses)
     {
         ArgumentNullException.ThrowIfNull(expenses);
-        var received = new SortedDictionary<string, Dictionary<Guid, decimal>>(StringComparer.Ordinal);
-        foreach (var expense in expenses)
-        {
-            if (!received.TryGetValue(expense.Currency, out var users))
-            {
-                users = [];
-                received[expense.Currency] = users;
-            }
-
-            foreach (var (userId, share) in Shares(expense))
-            {
-                users[userId] = users.GetValueOrDefault(userId) + share;
-            }
-        }
-
-        return received;
+        return SumByCurrency(expenses, Shares);
     }
 
     /// <summary>
@@ -125,7 +97,7 @@ public static class ExpenseMath
             var debtor = open.OrderBy(u => u.Value).ThenBy(u => u.Key).First();
             var creditor = open.OrderByDescending(u => u.Value).ThenBy(u => u.Key).First();
             var amount = Math.Min(-debtor.Value, creditor.Value);
-            payments.Add(new ExpenseRequest("Payment", amount, currency, debtor.Key, [creditor.Key], date, true));
+            payments.Add(new ExpenseRequest(PaymentDescription, amount, currency, debtor.Key, [creditor.Key], date, true));
             Settle(open, debtor.Key, amount, unit);
             Settle(open, creditor.Key, -amount, unit);
         }
@@ -175,15 +147,14 @@ public static class ExpenseMath
         var total = new Dictionary<Guid, decimal>();
         foreach (var (currency, users) in sums)
         {
-            var rate = currency == baseCurrency ? 1m : rates[currency].EffectiveRate() ?? throw new ArgumentException($"{currency} has no rate.", nameof(rates));
+            var rate = RateOf(currency, baseCurrency, rates) ?? throw new ArgumentException($"{currency} has no rate.", nameof(rates));
             foreach (var (userId, balance) in users)
             {
-                total[userId] = total.GetValueOrDefault(userId) + (balance / rate);
+                total[userId] = total.GetValueOrDefault(userId) + balance / rate;
             }
         }
 
-        var decimals = Currencies.Decimals(baseCurrency);
-        return total.ToDictionary(u => u.Key, u => decimal.Round(u.Value, decimals, MidpointRounding.AwayFromZero));
+        return total.ToDictionary(u => u.Key, u => RoundTo(baseCurrency, u.Value));
     }
 
     /// <summary>
@@ -197,13 +168,17 @@ public static class ExpenseMath
     public static decimal? InBaseCurrency(decimal amount, string currency, string baseCurrency, IReadOnlyDictionary<string, ExchangeRateSnapshot> rates)
     {
         ArgumentNullException.ThrowIfNull(rates);
-        var rate = currency == baseCurrency ? 1m : rates.GetValueOrDefault(currency)?.EffectiveRate();
-        return rate is { } value ? decimal.Round(amount / value, Currencies.Decimals(baseCurrency), MidpointRounding.AwayFromZero) : null;
+        return RateOf(currency, baseCurrency, rates) is { } rate ? RoundTo(baseCurrency, amount / rate) : null;
     }
 
-    private static decimal Unit(string currency)
+    private static decimal? RateOf(string currency, string baseCurrency, IReadOnlyDictionary<string, ExchangeRateSnapshot> rates)
     {
-        return 1m / (decimal)Math.Pow(10, Currencies.Decimals(currency));
+        return currency == baseCurrency ? 1m : rates.GetValueOrDefault(currency)?.EffectiveRate();
+    }
+
+    private static decimal RoundTo(string currency, decimal value)
+    {
+        return decimal.Round(value, Currencies.Decimals(currency), MidpointRounding.AwayFromZero);
     }
 
     private static void Settle(Dictionary<Guid, decimal> open, Guid userId, decimal amount, decimal unit)
@@ -217,5 +192,30 @@ public static class ExpenseMath
         {
             open[userId] = balance;
         }
+    }
+
+    private static SortedDictionary<string, Dictionary<Guid, decimal>> SumByCurrency(IEnumerable<ExpenseSnapshot> expenses, Func<ExpenseSnapshot, IEnumerable<KeyValuePair<Guid, decimal>>> amounts)
+    {
+        var sums = new SortedDictionary<string, Dictionary<Guid, decimal>>(StringComparer.Ordinal);
+        foreach (var expense in expenses)
+        {
+            if (!sums.TryGetValue(expense.Currency, out var users))
+            {
+                users = [];
+                sums[expense.Currency] = users;
+            }
+
+            foreach (var (userId, amount) in amounts(expense))
+            {
+                users[userId] = users.GetValueOrDefault(userId) + amount;
+            }
+        }
+
+        return sums;
+    }
+
+    private static decimal Unit(string currency)
+    {
+        return 1m / (decimal)Math.Pow(10, Currencies.Decimals(currency));
     }
 }

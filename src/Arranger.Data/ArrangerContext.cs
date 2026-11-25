@@ -1,3 +1,4 @@
+using Faemiyah.Arranger.Contracts.Arrangements;
 using Faemiyah.Arranger.Data.Entities;
 using Microsoft.EntityFrameworkCore;
 
@@ -71,14 +72,14 @@ public class ArrangerContext : DbContext
     {
         base.OnModelCreating(modelBuilder);
 
-        // Handles are ASCII only, so upper() agrees with ToUpperInvariant() used for lookups.
+        // Usernames are ASCII only, so upper() agrees with ToUpperInvariant() used for lookups.
         modelBuilder.Entity<User>()
             .Property(u => u.NormalizedUserName)
             .HasComputedColumnSql("upper(\"UserName\")", stored: true);
 
         modelBuilder.Entity<UserPicture>()
             .HasOne(p => p.User)
-            .WithOne()
+            .WithOne(u => u.Picture)
             .HasForeignKey<UserPicture>(p => p.UserId)
             .OnDelete(DeleteBehavior.Cascade);
 
@@ -114,7 +115,7 @@ public class ArrangerContext : DbContext
             .HasForeignKey(o => o.CreatedByUserId)
             .OnDelete(DeleteBehavior.Restrict);
 
-        // The grain refuses to remove the final option; the database only keeps the reference valid.
+        // Removing the final option clears the pick in the same save; the database only keeps the reference valid.
         modelBuilder.Entity<Arrangement>()
             .HasOne<TimeOption>()
             .WithMany()
@@ -137,7 +138,7 @@ public class ArrangerContext : DbContext
         modelBuilder.Entity<Vote>()
             .Property(v => v.Answer)
             .HasConversion<string>()
-            .HasMaxLength(8);
+            .HasMaxLength(ArrangementRules.VoteAnswerMaxLength);
 
         modelBuilder.Entity<Expense>()
             .HasOne(e => e.Arrangement)

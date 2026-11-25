@@ -12,12 +12,23 @@ Then:
 
 1. Copy `infra/.env_sample` to `infra/.env`.
 2. Fill `ARRANGER_USER` and `ARRANGER_PASSWORD` as per your pregenerated PostgreSQL database.
-2. From the repository root, run:
+3. From the repository root, run:
 
        ./refresh.sh
 
 This builds the `arranger` image and starts it via `infra/docker-compose.yml`. The app listens on
 `127.0.0.1:8549`. Data-protection keys persist in the `arranger-dpkeys` volume.
+
+The compose file works with Docker and Podman. Podman needs version 5.3 or later, for the `host-gateway`
+mapping of `host.docker.internal`.
+
+### Removing everything
+
+`infra/prune.sh` is meant for a machine that runs Docker only for Arranger, for example after trying it out.
+**It deletes all unused images, containers, networks, build cache and volumes on the host, not just
+Arranger's.** That includes the `arranger-dpkeys` volume (logging every user out) and any other stopped
+service's data. Do not run it on a machine with anything else in Docker; remove Arranger's containers,
+image and volume by hand instead.
 
 ## Development
 
