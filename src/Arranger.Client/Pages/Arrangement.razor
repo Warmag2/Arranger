@@ -18,7 +18,10 @@
 
 @if (snapshot == null)
 {
-    <p>@(missing ? "This arrangement does not exist. It may have been deleted." : "Connecting…")</p>
+    @if (missing || error == null)
+    {
+        <p>@(missing ? "This arrangement does not exist. It may have been deleted." : "Connecting…")</p>
+    }
 }
 else
 {
@@ -105,7 +108,14 @@ else
         snapshot = null;
         missing = false;
         connectedId = Id;
-        userId = (await CurrentUser.GetSettingsAsync())?.UserId ?? Guid.Empty;
+        if (await CurrentUser.GetSettingsAsync() is not { } settings)
+        {
+            // Without them every member would look like an outsider, and times would show in UTC.
+            error = "Could not load your settings. Reload the page.";
+            return;
+        }
+
+        userId = settings.UserId;
         live = new ArrangementLiveConnection(Navigation, JS, Id, OnSnapshotAsync, () => InvokeAsync(StateHasChanged));
         await live.StartAsync();
     }

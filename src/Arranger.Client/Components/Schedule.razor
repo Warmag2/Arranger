@@ -248,6 +248,12 @@ else if (canAddTime)
 
     private async Task AddAsync()
     {
+        formError = ValidateInput();
+        if (formError != null)
+        {
+            return;
+        }
+
         var request = isWholeDay ? CreateWholeDayRequest() : CreateTimedRequest();
         formError = request == null
             ? "That time does not exist in your time zone because of a daylight saving change."
@@ -276,5 +282,15 @@ else if (canAddTime)
         }
 
         return begin == null || (end != null && endUtc == null) ? null : new AddTimeOptionRequest(begin.Value, endUtc, false);
+    }
+
+    private string? ValidateInput()
+    {
+        if (date > endDate)
+        {
+            return "The end date is before the start date.";
+        }
+
+        return !isWholeDay && endDate != null && end == null ? "Give an end time, or clear the end date." : null;
     }
 }

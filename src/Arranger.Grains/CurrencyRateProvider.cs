@@ -17,7 +17,8 @@ namespace Faemiyah.Arranger.Grains;
 /// </summary>
 /// <remarks>
 /// The rates are held in memory for the lifetime of the process and refetched only when they are older than
-/// <see cref="RefreshInterval"/> and someone asks for them, or when a refresh is forced. A failed fetch keeps the last
+/// <see cref="RefreshInterval"/> and someone asks for them. The upstream updates once a day, so refetching sooner would
+/// gain nothing. A failed fetch keeps the last
 /// known rates. One upstream pivot table (per one unit of the pivot currency) is held and cross rates are computed from
 /// it, so adding a currency costs no extra request. A single-entry gate collapses concurrent fetches into one request.
 /// </remarks>
@@ -76,7 +77,7 @@ public sealed class CurrencyRateProvider : ICurrencyRateProvider, IDisposable
     }
 
     /// <inheritdoc />
-    public async Task<IReadOnlyDictionary<string, decimal>> GetRatesAsync(string baseCurrency, IReadOnlyCollection<string> currencies, bool forceRefresh, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyDictionary<string, decimal>> GetRatesAsync(string baseCurrency, IReadOnlyCollection<string> currencies, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrEmpty(baseCurrency);
         ArgumentNullException.ThrowIfNull(currencies);
@@ -87,7 +88,7 @@ public sealed class CurrencyRateProvider : ICurrencyRateProvider, IDisposable
             return result;
         }
 
-        var table = await GetTableAsync(forceRefresh, cancellationToken);
+        var table = await GetTableAsync(cancellationToken);
         if (table == null || !table.TryGetValue(baseCurrency, out var basePerPivot) || basePerPivot <= 0)
         {
             return result;
@@ -111,9 +112,9 @@ public sealed class CurrencyRateProvider : ICurrencyRateProvider, IDisposable
         return result;
     }
 
-    private async Task<Dictionary<string, decimal>?> GetTableAsync(bool forceRefresh, CancellationToken cancellationToken)
+    private async Task<Dictionary<string, decimal>?> GetTableAsync(CancellationToken cancellationToken)
     {
-        if (!forceRefresh && FreshTable() is { } fresh)
+        if (FreshTable() is { } fresh)
         {
             return fresh.PerPivot;
         }
@@ -122,7 +123,7 @@ public sealed class CurrencyRateProvider : ICurrencyRateProvider, IDisposable
         try
         {
             // Another caller may have refreshed the rates while this one waited for the gate.
-            if (!forceRefresh && FreshTable() is { } refreshed)
+            if (FreshTable() is { } refreshed)
             {
                 return refreshed.PerPivot;
             }
@@ -189,6 +190,5 @@ public sealed class CurrencyRateProvider : ICurrencyRateProvider, IDisposable
     /// </summary>
     private sealed record UpstreamResponse(
         [property: JsonPropertyName("result")] string? Result,
-        [property: JsonPropertyName("base_code")] string? BaseCode,
         [property: JsonPropertyName("rates")] Dictionary<string, decimal>? Rates);
 }

@@ -57,7 +57,7 @@ public static class ExpenseMath
 
     /// <summary>
     /// What each user received per currency: their shares of the expenses, payments to them included. A user's balance
-    /// is their <see cref="Spent"/> minus this. Counted independently from the shares to double-check the balances.
+    /// is their <see cref="Spent"/> minus this.
     /// </summary>
     /// <param name="expenses">The expenses.</param>
     /// <returns>The received totals by currency and user.</returns>

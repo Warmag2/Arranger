@@ -21,11 +21,11 @@ namespace Faemiyah.Arranger.Grains;
 /// </summary>
 /// <remarks>
 /// Refusals are returned as failed results before any state changes. Every change is written to the database before
-/// memory, so an exception leaves memory intact. A write the database refuses means this activation is stale, so it
-/// is dropped. Every change is then pushed to the clients watching the arrangement; calls are not reentrant, so the
-/// pushes leave in the order the changes happened.
+/// memory. A write the database refuses, or any exception, means memory may no longer match the database, so the
+/// activation is dropped and the next call reloads. Every change is then pushed to the clients watching the
+/// arrangement; calls are not reentrant, so the pushes leave in the order the changes happened.
 /// </remarks>
-public sealed class ArrangementGrain : Grain, IArrangementGrain
+public sealed class ArrangementGrain : Grain, IArrangementGrain, IIncomingGrainCallFilter
 {
     private readonly ILogger<ArrangementGrain> _logger;
     private readonly ArrangementRepository _arrangements;
@@ -93,6 +93,23 @@ public sealed class ArrangementGrain : Grain, IArrangementGrain
     }
 
     /// <inheritdoc />
+    public async Task Invoke(IIncomingGrainCallContext context)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        try
+        {
+            await context.Invoke();
+        }
+        catch (Exception exception)
+        {
+            // A write may have committed before the exception, so memory may be stale. The caller logs the exception.
+            DeactivateOnIdle();
+            _logger.LogWarning("Arrangement {ArrangementId} call {Method} threw {ExceptionType}. Reloading.", ArrangementId, context.InterfaceMethod.Name, exception.GetType().Name);
+            throw;
+        }
+    }
+
+    /// <inheritdoc />
     public async Task<CommandResult> CreateAsync(Guid userId, CreateArrangementRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -139,6 +156,12 @@ public sealed class ArrangementGrain : Grain, IArrangementGrain
     /// <inheritdoc />
     public Task<CommandResult> GetSnapshotAsync()
     {
+        if (!_state.Exists)
+        {
+            // Do not keep an activation for every unknown ID someone asks for.
+            DeactivateOnIdle();
+        }
+
         return Task.FromResult(_state.Current());
     }
 
@@ -454,7 +477,7 @@ public sealed class ArrangementGrain : Grain, IArrangementGrain
     /// <inheritdoc />
     public async Task<CommandResult> PickTimeAsync(Guid userId, long? timeOptionId)
     {
-        if ((_state.CheckAdmin(userId) ?? _state.CheckScheduleEnabled(userId)) is { } denied)
+        if (_state.CheckCanPickTime(userId) is { } denied)
         {
             return denied;
         }
@@ -551,7 +574,7 @@ public sealed class ArrangementGrain : Grain, IArrangementGrain
     /// <inheritdoc />
     public async Task<CommandResult> SetBaseCurrencyAsync(Guid userId, string currency)
     {
-        if (_state.CheckAdmin(userId) is { } denied)
+        if (_state.CheckCanManageCurrencies(userId) is { } denied)
         {
             return denied;
         }
@@ -575,7 +598,7 @@ public sealed class ArrangementGrain : Grain, IArrangementGrain
     public async Task<CommandResult> SetExchangeRateAsync(Guid userId, string currency, SetExchangeRateRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
-        if ((_state.CheckAdmin(userId) ?? _state.CheckExpensesEnabled(userId)) is { } denied)
+        if (_state.CheckCanManageCurrencies(userId) is { } denied)
         {
             return denied;
         }
@@ -595,7 +618,7 @@ public sealed class ArrangementGrain : Grain, IArrangementGrain
             rate = await SuggestRateAsync(currency);
         }
 
-        if (((rate is { } value ? ExpenseRules.ValidateRate(value) : null) ?? ExpenseRules.ValidateLoss(request.LossPercent)) is { } invalid)
+        if (ExpenseRules.ValidateExchangeRate(rate, request.LossPercent) is { } invalid)
         {
             return CommandResult.Failure(CommandError.Invalid, invalid);
         }
@@ -616,7 +639,7 @@ public sealed class ArrangementGrain : Grain, IArrangementGrain
     /// <inheritdoc />
     public async Task<CommandResult> RemoveCurrencyAsync(Guid userId, string currency)
     {
-        if ((_state.CheckAdmin(userId) ?? _state.CheckExpensesEnabled(userId)) is { } denied)
+        if (_state.CheckCanManageCurrencies(userId) is { } denied)
         {
             return denied;
         }
@@ -637,7 +660,7 @@ public sealed class ArrangementGrain : Grain, IArrangementGrain
     /// <inheritdoc />
     public async Task<CommandResult> RefreshRatesAsync(Guid userId)
     {
-        if ((_state.CheckAdmin(userId) ?? _state.CheckExpensesEnabled(userId)) is { } denied)
+        if (_state.CheckCanManageCurrencies(userId) is { } denied)
         {
             return denied;
         }
@@ -648,7 +671,8 @@ public sealed class ArrangementGrain : Grain, IArrangementGrain
             return _state.Current();
         }
 
-        var latest = await _rateProvider.GetRatesAsync(_state.Arrangement.BaseCurrency, currencies, forceRefresh: true);
+        // A fetch, when the cache is stale, holds this grain's turn for up to the client timeout. Only this arrangement waits.
+        var latest = await _rateProvider.GetRatesAsync(_state.Arrangement.BaseCurrency, currencies);
         var updates = new List<ExchangeRate>();
         foreach (var currency in currencies)
         {
@@ -676,7 +700,7 @@ public sealed class ArrangementGrain : Grain, IArrangementGrain
 
     private async Task<decimal?> SuggestRateAsync(string currency)
     {
-        var rates = await _rateProvider.GetRatesAsync(_state.Arrangement.BaseCurrency, [currency], forceRefresh: false);
+        var rates = await _rateProvider.GetRatesAsync(_state.Arrangement.BaseCurrency, [currency]);
         return rates.TryGetValue(currency, out var rate) ? rate : null;
     }
 

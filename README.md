@@ -42,8 +42,12 @@ image and volume by hand instead.
 
 ## Development
 
-Run a local PostgreSQL with `docker compose -f infra/docker-compose.dev.yml up -d`, then either
-start the `Server` project in debug mode from MSVS or run the server with
+Run a local PostgreSQL with `docker compose -f infra/docker-compose.dev.yml up -d`. It reads `ARRANGER_USER`
+and `ARRANGER_PASSWORD` from `infra/.env`. Give the server the matching connection string in its user secrets:
+
+    dotnet user-secrets set "ConnectionStrings:Database" "User ID=<user>;Password=<password>;Host=localhost;Port=5432;Database=arranger;" --project src/Arranger.Server
+
+Then either start the `Server` project in debug mode from MSVS or run the server with
 `dotnet run --project src/Arranger.Server`.
 
 NOTE: This service is unsecured and expects no certificates. Put it behind an NGINX or Apache
@@ -92,3 +96,28 @@ from its network's gateway rather than from loopback, so `infra/docker-compose.y
 `10.89.249.0/24` and trusts its gateway `10.89.249.1`. If that subnet clashes with another network on the host,
 change both values together. To check the setup, fail a login and confirm that the log shows your own IP, not
 the gateway's.
+
+### fail2ban
+
+A failed login logs `Arranger failed login for user <name> from <IP>`. With the Podman log file from
+`infra/docker-compose.yml`, put this filter in `/etc/fail2ban/filter.d/arranger.conf`:
+
+    [Definition]
+    datepattern = ^%%Y-%%m-%%dT%%H:%%M:%%S
+    failregex   = ^\S* stdout F\s+Arranger failed login for user \S+ from <ADDR>$
+
+and this jail in `/etc/fail2ban/jail.d/arranger.local`:
+
+    [arranger]
+    enabled  = true
+    filter   = arranger
+    logpath  = /var/log/containers/arranger.log
+    port     = http,https
+    maxretry = 5
+    findtime = 10m
+    bantime  = 1h
+    ignoreip = 127.0.0.1/8 ::1 10.89.249.1
+
+Test the filter with `fail2ban-regex /var/log/containers/arranger.log /etc/fail2ban/filter.d/arranger.conf`.
+It is only useful once the log shows client IPs (see above); `ignoreip` keeps the gateway from being banned
+until then.

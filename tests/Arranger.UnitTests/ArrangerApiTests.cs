@@ -1,6 +1,7 @@
 using System;
 using System.Net;
 using System.Net.Http;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using AwesomeAssertions;
@@ -28,6 +29,19 @@ public class ArrangerApiTests
     }
 
     [Test]
+    public async Task SendAsync_UnreadableProblem_ReturnsStatus()
+    {
+        var api = Create(_ => Task.FromResult(new HttpResponseMessage(HttpStatusCode.InternalServerError)
+        {
+            Content = new StringContent("{not json", Encoding.UTF8, "application/problem+json"),
+        }));
+
+        var error = await api.SendAsync(HttpMethod.Delete, Path);
+
+        error.Should().Contain("500");
+    }
+
+    [Test]
     public async Task SendAsyncOfT_ConnectionLost_ReturnsError()
     {
         var api = Create(_ => throw new HttpRequestException("Failed to fetch"));
@@ -42,6 +56,20 @@ public class ArrangerApiTests
     public async Task SendAsyncOfT_NoContent_ReturnsError()
     {
         var api = Create(_ => Task.FromResult(new HttpResponseMessage(HttpStatusCode.NoContent)));
+
+        var result = await api.GetAsync<UserSettings>(Path);
+
+        result.IsSuccess.Should().BeFalse();
+        result.Error.Should().NotBeNullOrEmpty();
+    }
+
+    [Test]
+    public async Task SendAsyncOfT_NullBody_ReturnsError()
+    {
+        var api = Create(_ => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent("null", Encoding.UTF8, "application/json"),
+        }));
 
         var result = await api.GetAsync<UserSettings>(Path);
 

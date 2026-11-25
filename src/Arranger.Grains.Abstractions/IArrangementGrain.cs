@@ -49,7 +49,7 @@ public interface IArrangementGrain : IGrainWithGuidKey
 
     /// <summary>
     /// Change the currency balances are settled in, clearing the exchange rates. The old base currency stays available.
-    /// Admin only. Allowed while the expenses are disabled.
+    /// Admin only, while the expenses are enabled.
     /// </summary>
     /// <param name="userId">The acting user.</param>
     /// <param name="currency">The ISO 4217 currency.</param>
@@ -78,7 +78,7 @@ public interface IArrangementGrain : IGrainWithGuidKey
     Task<CommandResult> RemoveCurrencyAsync(Guid userId, string currency);
 
     /// <summary>
-    /// Refresh every added currency's exchange rate from the latest market rates, keeping each conversion loss. Admin
+    /// Refresh every added currency's exchange rate from the cached market rates, keeping each conversion loss. Admin
     /// only.
     /// </summary>
     /// <param name="userId">The acting user.</param>

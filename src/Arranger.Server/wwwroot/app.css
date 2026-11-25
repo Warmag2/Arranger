@@ -621,13 +621,14 @@ thead th {
     outline-offset: -2px;
 }
 
+/* Hover and selection as on the buttons */
 .fui-tab button:hover {
-    background-color: var(--fui-color-bg-hover);
-    color: var(--fui-color-text-hover);
+    background-color: var(--color-navigation-bg-hover);
+    color: var(--fui-color-text-selected);
 }
 
 .fui-tab button.fui-active {
-    background-color: var(--fui-color-bg-selected);
+    background-color: var(--color-button-selected-bg);
     color: var(--fui-color-text-selected);
 }
 

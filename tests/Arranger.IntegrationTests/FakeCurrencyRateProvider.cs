@@ -22,16 +22,10 @@ internal sealed class FakeCurrencyRateProvider : ICurrencyRateProvider
     /// </summary>
     public int Calls { get; private set; }
 
-    /// <summary>
-    /// Whether the last call asked for a forced refresh.
-    /// </summary>
-    public bool LastForceRefresh { get; private set; }
-
     /// <inheritdoc />
-    public Task<IReadOnlyDictionary<string, decimal>> GetRatesAsync(string baseCurrency, IReadOnlyCollection<string> currencies, bool forceRefresh, CancellationToken cancellationToken = default)
+    public Task<IReadOnlyDictionary<string, decimal>> GetRatesAsync(string baseCurrency, IReadOnlyCollection<string> currencies, CancellationToken cancellationToken = default)
     {
         Calls++;
-        LastForceRefresh = forceRefresh;
         var result = new Dictionary<string, decimal>(StringComparer.Ordinal);
         foreach (var currency in currencies)
         {

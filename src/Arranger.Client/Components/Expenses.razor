@@ -168,7 +168,7 @@ else
                 <tbody>
                     @foreach (var member in Snapshot.Members.Where(m => users.ContainsKey(m.UserId)))
                     {
-                        // Spent and received are counted independently; their difference is the balance (double bookkeeping).
+                        // The balance is spent minus received; the two columns show where it comes from.
                         var balance = users[member.UserId];
                         var paid = spent[code].GetValueOrDefault(member.UserId);
                         var gained = received[code].GetValueOrDefault(member.UserId);
@@ -254,9 +254,10 @@ else
 
         totalsOf = Snapshot;
         missing = ExpenseMath.MissingRates(Snapshot.Expenses, Snapshot.BaseCurrency, Snapshot.ExchangeRates);
-        balances = Display(ExpenseMath.Balances(Snapshot.Expenses));
-        spent = Display(ExpenseMath.Spent(Snapshot.Expenses));
-        received = Display(ExpenseMath.Received(Snapshot.Expenses));
+        var inBase = missing.Count == 0;
+        balances = Display(ExpenseMath.Balances(Snapshot.Expenses), inBase);
+        spent = Display(ExpenseMath.Spent(Snapshot.Expenses), inBase);
+        received = Display(ExpenseMath.Received(Snapshot.Expenses), inBase);
     }
 
     private static string? BalanceClass(decimal balance)
@@ -280,10 +281,10 @@ else
         return Currencies.Options(Snapshot.AvailableCurrencies().Append(currency).Distinct());
     }
 
-    private IReadOnlyDictionary<string, IReadOnlyDictionary<Guid, decimal>> Display(IReadOnlyDictionary<string, Dictionary<Guid, decimal>> sums)
+    private IReadOnlyDictionary<string, IReadOnlyDictionary<Guid, decimal>>     Display(IReadOnlyDictionary<string, Dictionary<Guid, decimal>> sums, bool inBase)
     {
         // All in the base currency when every rate is known, otherwise per currency.
-        return missing.Count == 0
+            return inBase
             ? new Dictionary<string, IReadOnlyDictionary<Guid, decimal>> { [Snapshot.BaseCurrency] = ExpenseMath.InBaseCurrency(sums, Snapshot.BaseCurrency, Snapshot.ExchangeRates) }
             : sums.ToDictionary(b => b.Key, b => (IReadOnlyDictionary<Guid, decimal>)b.Value);
     }

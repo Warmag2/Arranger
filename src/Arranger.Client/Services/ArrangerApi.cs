@@ -92,9 +92,13 @@ public sealed class ArrangerApi
                 return new ApiResult<T>(null, await ReadErrorAsync(response));
             }
 
-            return response.StatusCode == HttpStatusCode.NoContent
-                ? new ApiResult<T>(null, NoContentError)
-                : new ApiResult<T>(await response.Content.ReadFromJsonAsync<T>(JsonOptions), null);
+            if (response.StatusCode == HttpStatusCode.NoContent)
+            {
+                return new ApiResult<T>(null, NoContentError);
+            }
+
+            var value = await response.Content.ReadFromJsonAsync<T>(JsonOptions);
+            return value == null ? new ApiResult<T>(null, NoContentError) : new ApiResult<T>(value, null);
         }
         catch (Exception e) when (IsUnreachable(e))
         {
@@ -139,10 +143,17 @@ public sealed class ArrangerApi
     {
         if (response.Content.Headers.ContentType?.MediaType == MediaTypeNames.Application.ProblemJson)
         {
-            var problem = await response.Content.ReadFromJsonAsync<ProblemResponse>(JsonOptions);
-            if ((problem?.Detail ?? problem?.Title) is { } message)
+            try
             {
-                return message;
+                var problem = await response.Content.ReadFromJsonAsync<ProblemResponse>(JsonOptions);
+                if ((problem?.Detail ?? problem?.Title) is { } message)
+                {
+                    return message;
+                }
+            }
+            catch (JsonException)
+            {
+                // An unreadable problem body still has a status code to report.
             }
         }
 

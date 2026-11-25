@@ -49,6 +49,11 @@ public sealed partial class ArrangerApp : IAsyncDisposable
     public TestServer Server => _factory.Server;
 
     /// <summary>
+    /// The server's services.
+    /// </summary>
+    public IServiceProvider Services => _factory.Services;
+
+    /// <summary>
     /// Create an HTTP client that keeps its cookies in <paramref name="cookies"/> and sends the API header.
     /// </summary>
     /// <param name="cookies">The cookies, for example from <see cref="RegisterAsync"/>.</param>
@@ -64,6 +69,18 @@ public sealed partial class ArrangerApp : IAsyncDisposable
     public ValueTask DisposeAsync()
     {
         return _factory.DisposeAsync();
+    }
+
+    /// <summary>
+    /// Read the antiforgery token from a page.
+    /// </summary>
+    /// <param name="http">The client, signed in when the page is for a signed-in user.</param>
+    /// <param name="path">The page.</param>
+    /// <returns>The token.</returns>
+    public static async Task<string> GetAntiforgeryTokenAsync(HttpClient http, string path)
+    {
+        var page = await http.GetStringAsync(path);
+        return AntiforgeryToken().Match(page).Groups[1].Value;
     }
 
     /// <summary>
@@ -87,11 +104,11 @@ public sealed partial class ArrangerApp : IAsyncDisposable
     {
         var cookies = new CookieContainer();
         using var http = CreateHttpClient(cookies);
-        var page = await http.GetStringAsync("Account/Register");
+        var token = await GetAntiforgeryTokenAsync(http, "Account/Register");
         using var form = new FormUrlEncodedContent(new[]
         {
             KeyValuePair.Create("_handler", "register"),
-            KeyValuePair.Create("__RequestVerificationToken", AntiforgeryToken().Match(page).Groups[1].Value),
+            KeyValuePair.Create("__RequestVerificationToken", token),
             KeyValuePair.Create("Input.TimeZoneId", "Europe/Helsinki"),
             KeyValuePair.Create("Input.UserName", userName),
             KeyValuePair.Create("Input.Password", "correct horse battery staple"),

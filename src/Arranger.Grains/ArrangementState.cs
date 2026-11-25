@@ -342,6 +342,16 @@ public sealed class ArrangementState
     }
 
     /// <summary>
+    /// Check that the user may pick the time: an admin when the schedule is enabled.
+    /// </summary>
+    /// <param name="userId">The public user ID.</param>
+    /// <returns>The refusal, or <b>null</b> when allowed.</returns>
+    public CommandResult? CheckCanPickTime(Guid userId)
+    {
+        return CheckAdmin(userId) ?? CheckScheduleEnabled(userId);
+    }
+
+    /// <summary>
     /// Check that the user is a member and the expenses are enabled.
     /// </summary>
     /// <param name="userId">The public user ID.</param>
@@ -349,6 +359,16 @@ public sealed class ArrangementState
     public CommandResult? CheckExpensesEnabled(Guid userId)
     {
         return Check(userId, _ => !Arrangement.IsExpensesDisabled, "The expenses are disabled.");
+    }
+
+    /// <summary>
+    /// Check that the user may change the currencies and their rates: an admin when the expenses are enabled.
+    /// </summary>
+    /// <param name="userId">The public user ID.</param>
+    /// <returns>The refusal, or <b>null</b> when allowed.</returns>
+    public CommandResult? CheckCanManageCurrencies(Guid userId)
+    {
+        return CheckAdmin(userId) ?? CheckExpensesEnabled(userId);
     }
 
     /// <summary>

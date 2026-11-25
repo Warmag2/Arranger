@@ -129,7 +129,7 @@
 
     private async Task SetRateAsync(string code, decimal? rate, decimal lossPercent)
     {
-        rateError = (rate is { } value ? ExpenseRules.ValidateRate(value) : null) ?? ExpenseRules.ValidateLoss(lossPercent);
+        rateError = ExpenseRules.ValidateExchangeRate(rate, lossPercent);
         if (rateError == null)
         {
             await Run(HttpMethod.Put, $"rates/{code}", new SetExchangeRateRequest(rate, lossPercent));

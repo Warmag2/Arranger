@@ -17,6 +17,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Routing;
 using Orleans;
+using Orleans.Runtime;
 using Faemiyah.Repository.Interfaces;
 using Faemiyah.Repository.Models;
 
@@ -131,7 +132,7 @@ public static class UserEndpoints
         {
             return TypedResults.Problem(
                 $"The picture can be at most {ProfilePictureRules.MaxDimension}×{ProfilePictureRules.MaxDimension} pixels.",
-                statusCode: StatusCodes.Status413PayloadTooLarge);
+                statusCode: StatusCodes.Status422UnprocessableEntity);
         }
 
         var userId = request.HttpContext.User.GetRequiredUserId();
@@ -163,7 +164,14 @@ public static class UserEndpoints
         }
 
         var result = await pictures.DeleteAsync(p => p.UserId == user.Id, cancellationToken);
-        return result.IsSuccess ? await PictureChangedAsync(user, queries, arrangements, grains, cancellationToken) : Conflict();
+        if (!result.IsSuccess)
+        {
+            return Conflict();
+        }
+
+        return result.Value.Count == 0
+            ? TypedResults.Ok(await ToSettingsAsync(user, queries, cancellationToken))
+            : await PictureChangedAsync(user, queries, arrangements, grains, cancellationToken);
     }
 
     private static async Task<IResult> GetPictureAsync(Guid userId, HttpContext context, UserQueries queries, CancellationToken cancellationToken)
@@ -190,8 +198,16 @@ public static class UserEndpoints
 
     private static async Task RefreshArrangementsAsync(Guid userId, ArrangementQueries arrangements, IGrainFactory grains, CancellationToken cancellationToken)
     {
+        // An inactive grain loads fresh profiles when it activates, so only the active ones are told.
+        var grainType = grains.GetGrain<IArrangementGrain>(Guid.Empty).GetGrainId().Type;
+        var active = (await grains.GetGrain<IManagementGrain>(0).GetActiveGrains(grainType, cancellationToken)).Select(g => g.GetGuidKey()).ToHashSet();
+        if (active.Count == 0)
+        {
+            return;
+        }
+
         var rows = await arrangements.GetForUserAsync(userId, cancellationToken);
-        await Task.WhenAll(rows.Select(r => grains.GetGrain<IArrangementGrain>(r.Id).RefreshMemberAsync(userId)));
+        await Task.WhenAll(rows.Where(r => active.Contains(r.Id)).Select(r => grains.GetGrain<IArrangementGrain>(r.Id).RefreshMemberAsync(userId)));
     }
 
     private static async Task<UserSettings> ToSettingsAsync(User user, UserQueries queries, CancellationToken cancellationToken)

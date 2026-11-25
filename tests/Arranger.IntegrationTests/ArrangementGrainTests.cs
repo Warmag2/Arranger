@@ -6,6 +6,7 @@ using AwesomeAssertions;
 using Faemiyah.Arranger.Contracts.Arrangements;
 using Faemiyah.Arranger.Data.Entities;
 using Faemiyah.Arranger.Data.Extensions;
+using Faemiyah.Arranger.Data.Repositories;
 using Faemiyah.Arranger.Grains;
 using Faemiyah.Arranger.Grains.Abstractions;
 using Faemiyah.Arranger.Server.Hosting;
@@ -28,6 +29,7 @@ public class ArrangementGrainTests
         ExpenseCommandCase("AddExpense", (grain, owner, _) => grain.AddExpenseAsync(owner, Dinner(owner, owner))),
         ExpenseCommandCase("UpdateExpense", (grain, owner, id) => grain.UpdateExpenseAsync(owner, id, Dinner(owner, owner))),
         ExpenseCommandCase("DeleteExpense", (grain, owner, id) => grain.DeleteExpenseAsync(owner, id)),
+        ExpenseCommandCase("SetBaseCurrency", (grain, owner, _) => grain.SetBaseCurrencyAsync(owner, "EUR")),
         ExpenseCommandCase("SetExchangeRate", (grain, owner, _) => grain.SetExchangeRateAsync(owner, "EUR", new(0.09m))),
     ];
 
@@ -69,6 +71,7 @@ public class ArrangementGrainTests
     private readonly FakeCurrencyRateProvider _rateProvider = new();
     private IEntityRepositoryWithUuid<long, Arrangement> _arrangements = null!;
     private InProcessTestCluster _cluster = null!;
+    private ExpenseRepository _expenses = null!;
     private IEntityRepository<long, UserPicture> _pictures = null!;
     private IEntityRepositoryWithUuid<long, User> _users = null!;
 
@@ -96,6 +99,7 @@ public class ArrangementGrainTests
         var services = _cluster.GetSiloServiceProvider(_cluster.Silos[0].SiloAddress);
         _users = services.GetRequiredService<IEntityRepositoryWithUuid<long, User>>();
         _arrangements = services.GetRequiredService<IEntityRepositoryWithUuid<long, Arrangement>>();
+        _expenses = services.GetRequiredService<ExpenseRepository>();
         _pictures = services.GetRequiredService<IEntityRepository<long, UserPicture>>();
     }
 
@@ -109,6 +113,33 @@ public class ArrangementGrainTests
     public void ResetRateProvider()
     {
         _rateProvider.Rates.Clear();
+    }
+
+    [Test]
+    public async Task AddExpense_AtTheLimit_ReturnsInvalid()
+    {
+        // Seeded straight into the database: two thousand commands would take half a minute.
+        var owner = await AddUserAsync("Owner");
+        var grain = await CreateAsync(owner);
+        var arrangementId = (await _arrangements.GetAsync(grain.GetPrimaryKey()))!.Id;
+        var payerId = (await _users.GetAsync(owner))!.Id;
+        var expenses = Enumerable.Range(0, ExpenseRules.MaxExpenses).Select(_ => new Expense
+        {
+            ArrangementId = arrangementId,
+            Description = "Dinner",
+            Amount = 30m,
+            Currency = "SEK",
+            PaidByUserId = payerId,
+            Date = new DateOnly(2026, 6, 19),
+            Participations = [new ExpenseParticipation { UserId = payerId }],
+        });
+        (await _expenses.AddManyAsync(expenses.ToList())).IsSuccess.Should().BeTrue();
+        await _cluster.DeactivateAsync(grain);
+
+        var result = await grain.AddExpenseAsync(owner, Dinner(owner, owner));
+
+        result.Error.Should().Be(CommandError.Invalid);
+        (await grain.GetSnapshotAsync()).Snapshot!.Expenses.Should().HaveCount(ExpenseRules.MaxExpenses);
     }
 
     [Test]
@@ -179,6 +210,21 @@ public class ArrangementGrainTests
     }
 
     [Test]
+    public async Task AddTimeOption_AtTheLimit_ReturnsInvalid()
+    {
+        var owner = await AddUserAsync("Owner");
+        var grain = await CreateAsync(owner);
+        for (var hour = 0; hour < ArrangementRules.MaxTimeOptions; hour++)
+        {
+            (await grain.AddTimeOptionAsync(owner, Timed(hour))).IsSuccess.Should().BeTrue();
+        }
+
+        var result = await grain.AddTimeOptionAsync(owner, Timed(ArrangementRules.MaxTimeOptions));
+
+        result.Error.Should().Be(CommandError.Invalid);
+    }
+
+    [Test]
     public async Task AddTimeOption_ByAdminWhileNewTimesClosed_AddsTime()
     {
         var owner = await AddUserAsync("Owner");
@@ -244,6 +290,21 @@ public class ArrangementGrainTests
         var result = await grain.AddTimeOptionAsync(owner, new AddTimeOptionRequest(Evening.AddHours(1), null, true));
 
         result.Error.Should().Be(CommandError.Invalid);
+    }
+
+    [Test]
+    public async Task AddTimeOption_WholeDayOverSeveralDays_SurvivesReactivation()
+    {
+        var owner = await AddUserAsync("Owner");
+        var grain = await CreateAsync(owner);
+        await grain.AddTimeOptionAsync(owner, new AddTimeOptionRequest(Evening, Evening.AddDays(2), true));
+
+        await _cluster.DeactivateAsync(grain);
+        var option = (await grain.GetSnapshotAsync()).Snapshot!.TimeOptions.Single();
+
+        option.DateBegin.Should().Be(Evening);
+        option.DateEnd.Should().Be(Evening.AddDays(2));
+        option.IsWholeDay.Should().BeTrue();
     }
 
     [Test]
@@ -511,6 +572,20 @@ public class ArrangementGrainTests
     }
 
     [Test]
+    public async Task FailingCall_ThrowsAndReloads()
+    {
+        var owner = await AddUserAsync("Owner");
+        var grain = await CreateAsync(owner);
+        _notifier.FailNextChange = true;
+
+        var update = () => grain.UpdateDetailsAsync(owner, Details("Renamed"));
+
+        await update.Should().ThrowAsync<InvalidOperationException>();
+        await _cluster.WaitForDeactivationAsync(grain);
+        (await grain.GetSnapshotAsync()).Snapshot!.Title.Should().Be("Renamed");
+    }
+
+    [Test]
     public async Task Join_AddsMember()
     {
         var owner = await AddUserAsync("Owner");
@@ -545,6 +620,21 @@ public class ArrangementGrainTests
 
         result.Error.Should().Be(CommandError.Forbidden);
         (await grain.GetSnapshotAsync()).Snapshot!.FindMember(late).Should().BeNull();
+    }
+
+    [Test]
+    public async Task Join_AtTheLimit_ReturnsInvalid()
+    {
+        var owner = await AddUserAsync("Owner");
+        var grain = await CreateAsync(owner);
+        for (var i = 1; i < ArrangementRules.MaxMembers; i++)
+        {
+            (await grain.JoinAsync(await AddUserAsync("Member"))).IsSuccess.Should().BeTrue();
+        }
+
+        var result = await grain.JoinAsync(await AddUserAsync("Late"));
+
+        result.Error.Should().Be(CommandError.Invalid);
     }
 
     [Test]
@@ -732,11 +822,10 @@ public class ArrangementGrainTests
 
         var result = await grain.RefreshRatesAsync(owner);
 
-        // Each rate follows the market while its conversion loss is kept, and a refresh forces fresh market data.
+        // Each rate follows the market while its conversion loss is kept.
         var refreshed = result.Snapshot!;
         refreshed.ExchangeRates["USD"].Should().Be(new ExchangeRateSnapshot(0.095m, 1.5m));
         refreshed.ExchangeRates["EUR"].Should().Be(new ExchangeRateSnapshot(0.087m, 0));
-        _rateProvider.LastForceRefresh.Should().BeTrue();
     }
 
     [Test]

@@ -21,7 +21,7 @@ public class CurrencyRateProviderTests
     {
         var provider = NewProvider(out _, out _, Success("USD", 1m, ("EUR", 0.9m), ("JPY", 150m)));
 
-        var rates = await provider.GetRatesAsync("EUR", ["JPY", "USD"], forceRefresh: false);
+        var rates = await provider.GetRatesAsync("EUR", ["JPY", "USD"]);
 
         rates["JPY"].Should().Be(166.66666667m);
         rates["USD"].Should().Be(1.11111111m);
@@ -32,7 +32,7 @@ public class CurrencyRateProviderTests
     {
         var provider = NewProvider(out _, out _, Success("USD", 1m, ("EUR", 0.9m), ("ZZZ", 5m)));
 
-        var rates = await provider.GetRatesAsync("USD", ["ZZZ", "EUR"], forceRefresh: false);
+        var rates = await provider.GetRatesAsync("USD", ["ZZZ", "EUR"]);
 
         rates.Keys.Should().BeEquivalentTo("EUR");
     }
@@ -45,10 +45,10 @@ public class CurrencyRateProviderTests
             : new HttpResponseMessage(HttpStatusCode.ServiceUnavailable));
         var time = new MutableTimeProvider(Start);
         var provider = new CurrencyRateProvider(new StubHttpClientFactory(handler), time, NullLogger<CurrencyRateProvider>.Instance);
-        await provider.GetRatesAsync("USD", ["EUR"], forceRefresh: false);
+        await provider.GetRatesAsync("USD", ["EUR"]);
         time.Advance(TimeSpan.FromHours(13));
 
-        var rates = await provider.GetRatesAsync("USD", ["EUR"], forceRefresh: false);
+        var rates = await provider.GetRatesAsync("USD", ["EUR"]);
 
         handler.Calls.Should().Be(2);
         rates["EUR"].Should().Be(0.9m);
@@ -59,7 +59,7 @@ public class CurrencyRateProviderTests
     {
         var provider = NewProvider(out _, out _, Success("USD", 1m, ("EUR", 0.9m)));
 
-        var rates = await provider.GetRatesAsync("EUR", ["JPY", "USD"], forceRefresh: false);
+        var rates = await provider.GetRatesAsync("EUR", ["JPY", "USD"]);
 
         rates.Keys.Should().BeEquivalentTo("USD");
     }
@@ -75,30 +75,19 @@ public class CurrencyRateProviderTests
         });
         var provider = new CurrencyRateProvider(new StubHttpClientFactory(handler), new MutableTimeProvider(Start), NullLogger<CurrencyRateProvider>.Instance);
 
-        var fetch = () => provider.GetRatesAsync("USD", ["EUR"], forceRefresh: false, cancellation.Token);
+        var fetch = () => provider.GetRatesAsync("USD", ["EUR"], cancellation.Token);
 
         await fetch.Should().ThrowAsync<OperationCanceledException>();
-    }
-
-    [Test]
-    public async Task GetRates_RefetchesWhenRefreshIsForcedEvenWhenFresh()
-    {
-        var provider = NewProvider(out var handler, out _, Success("USD", 1m, ("EUR", 0.9m)));
-        await provider.GetRatesAsync("USD", ["EUR"], forceRefresh: false);
-
-        await provider.GetRatesAsync("USD", ["EUR"], forceRefresh: true);
-
-        handler.Calls.Should().Be(2);
     }
 
     [Test]
     public async Task GetRates_RefetchesWhenTheCacheIsStale()
     {
         var provider = NewProvider(out var handler, out var time, Success("USD", 1m, ("EUR", 0.9m)));
-        await provider.GetRatesAsync("USD", ["EUR"], forceRefresh: false);
+        await provider.GetRatesAsync("USD", ["EUR"]);
         time.Advance(TimeSpan.FromHours(13));
 
-        await provider.GetRatesAsync("USD", ["EUR"], forceRefresh: false);
+        await provider.GetRatesAsync("USD", ["EUR"]);
 
         handler.Calls.Should().Be(2);
     }
@@ -108,7 +97,7 @@ public class CurrencyRateProviderTests
     {
         var provider = NewProvider(out var handler, out _, Success("USD", 1m, ("EUR", 0.9m)));
 
-        var rates = await provider.GetRatesAsync("USD", [], forceRefresh: false);
+        var rates = await provider.GetRatesAsync("USD", []);
 
         rates.Should().BeEmpty();
         handler.Calls.Should().Be(0);
@@ -119,7 +108,7 @@ public class CurrencyRateProviderTests
     {
         var provider = NewProvider(out _, out _, Success("USD", 1m, ("EUR", 0.9m)));
 
-        var rates = await provider.GetRatesAsync("JPY", ["EUR"], forceRefresh: false);
+        var rates = await provider.GetRatesAsync("JPY", ["EUR"]);
 
         rates.Should().BeEmpty();
     }
@@ -128,10 +117,10 @@ public class CurrencyRateProviderTests
     public async Task GetRates_ServesTheCacheWhileFresh()
     {
         var provider = NewProvider(out var handler, out var time, Success("USD", 1m, ("EUR", 0.9m)));
-        await provider.GetRatesAsync("USD", ["EUR"], forceRefresh: false);
+        await provider.GetRatesAsync("USD", ["EUR"]);
         time.Advance(TimeSpan.FromHours(11));
 
-        await provider.GetRatesAsync("USD", ["EUR"], forceRefresh: false);
+        await provider.GetRatesAsync("USD", ["EUR"]);
 
         handler.Calls.Should().Be(1);
     }

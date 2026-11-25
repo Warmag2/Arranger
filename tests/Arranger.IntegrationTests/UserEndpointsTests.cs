@@ -10,7 +10,11 @@ using AwesomeAssertions;
 using Faemiyah.Arranger.Contracts;
 using Faemiyah.Arranger.Contracts.Arrangements;
 using Faemiyah.Arranger.Contracts.Users;
+using Faemiyah.Arranger.Grains.Abstractions;
+using Microsoft.Extensions.DependencyInjection;
 using NUnit.Framework;
+using Orleans;
+using Orleans.Runtime;
 
 namespace Faemiyah.Arranger.IntegrationTests;
 
@@ -18,6 +22,8 @@ namespace Faemiyah.Arranger.IntegrationTests;
 public sealed class UserEndpointsTests
 {
     private ArrangerApp _app = null!;
+
+    private IGrainFactory Grains => _app.Services.GetRequiredService<IGrainFactory>();
 
     [OneTimeSetUp]
     public void StartServer()
@@ -73,6 +79,23 @@ public sealed class UserEndpointsTests
     }
 
     [Test]
+    public async Task SetAndDeletePicture_ShowInArrangements()
+    {
+        using var http = await SignInAsync();
+        var arrangementId = await CreateArrangementAsync(http);
+        var set = await ArrangerApp.ReadAsync<UserSettings>(await PutPictureAsync(http, Png(16, 16)));
+        set.PictureVersion.Should().NotBeNull();
+        (await GetMemberAsync(http, arrangementId)).PictureVersion.Should().Be(set.PictureVersion);
+
+        var deleted = await ArrangerApp.ReadAsync<UserSettings>(await http.DeleteAsync(ApiRoutes.MyPicture));
+
+        deleted.PictureVersion.Should().BeNull();
+        (await GetMemberAsync(http, arrangementId)).PictureVersion.Should().BeNull();
+        (await http.GetAsync(ApiRoutes.UserPicture(set.UserId, set.PictureVersion.Value))).StatusCode.Should().Be(HttpStatusCode.NotFound);
+        (await ArrangerApp.ReadAsync<UserSettings>(await http.DeleteAsync(ApiRoutes.MyPicture))).PictureVersion.Should().BeNull();
+    }
+
+    [Test]
     public async Task SetPicture_NotAnImage_IsUnsupportedMediaType()
     {
         using var http = await SignInAsync();
@@ -83,41 +106,44 @@ public sealed class UserEndpointsTests
     }
 
     [Test]
-    public async Task SetPicture_ShowsInArrangements()
-    {
-        using var http = await SignInAsync();
-        var arrangementId = await CreateArrangementAsync(http);
-
-        var settings = await ArrangerApp.ReadAsync<UserSettings>(await PutPictureAsync(http, Png(16, 16)));
-
-        settings.PictureVersion.Should().NotBeNull();
-        (await GetMemberAsync(http, arrangementId)).PictureVersion.Should().Be(settings.PictureVersion);
-    }
-
-    [TestCase(16, 16, ProfilePictureRules.MaxBytes)]
-    [TestCase(ProfilePictureRules.MaxDimension + 1, 16, 0)]
-    [TestCase(16, ProfilePictureRules.MaxDimension + 1, 0)]
-    public async Task SetPicture_TooLarge_IsPayloadTooLarge(int width, int height, int padding)
+    public async Task SetPicture_TooManyBytes_IsPayloadTooLarge()
     {
         using var http = await SignInAsync();
 
-        var response = await PutPictureAsync(http, Png(width, height, padding));
+        var response = await PutPictureAsync(http, Png(16, 16, ProfilePictureRules.MaxBytes));
 
         response.StatusCode.Should().Be(HttpStatusCode.RequestEntityTooLarge);
     }
 
-    [Test]
-    public async Task UpdateSettings_Rename_ShowsInArrangements()
+    [TestCase(ProfilePictureRules.MaxDimension + 1, 16)]
+    [TestCase(16, ProfilePictureRules.MaxDimension + 1)]
+    public async Task SetPicture_TooManyPixels_IsUnprocessable(int width, int height)
     {
         using var http = await SignInAsync();
-        var arrangementId = await CreateArrangementAsync(http);
+
+        var response = await PutPictureAsync(http, Png(width, height));
+
+        response.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+    }
+
+    [Test]
+    public async Task UpdateSettings_Rename_ShowsInArrangementsAndLeavesIdleOnesInactive()
+    {
+        using var http = await SignInAsync();
+        var idleId = await CreateArrangementAsync(http);
+        var management = Grains.GetGrain<IManagementGrain>(0);
+        await management.ForceActivationCollection(TimeSpan.Zero);
+        var activeId = await CreateArrangementAsync(http);
         var settings = await ArrangerApp.ReadAsync<UserSettings>(await http.GetAsync(ApiRoutes.MySettings));
         var request = new UpdateUserSettingsRequest(NewUserName(), settings.TimeZoneId, settings.DefaultCurrency);
 
         var response = await http.PutAsJsonAsync(ApiRoutes.MySettings, request, ArrangerApp.JsonOptions);
 
         (await ArrangerApp.ReadAsync<UserSettings>(response)).UserName.Should().Be(request.UserName);
-        (await GetMemberAsync(http, arrangementId)).UserName.Should().Be(request.UserName);
+        var grainType = Grains.GetGrain<IArrangementGrain>(idleId).GetGrainId().Type;
+        (await management.GetActiveGrains(grainType)).Select(g => g.GetGuidKey()).Should().Contain(activeId).And.NotContain(idleId);
+        (await GetMemberAsync(http, activeId)).UserName.Should().Be(request.UserName);
+        (await GetMemberAsync(http, idleId)).UserName.Should().Be(request.UserName);
     }
 
     [Test]
