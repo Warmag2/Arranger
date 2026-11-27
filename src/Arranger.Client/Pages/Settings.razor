@@ -4,10 +4,10 @@
 @inject CurrentUser CurrentUser
 @inject NavigationManager Navigation
 
-<PageTitle>Settings · Arranger</PageTitle>
+<PageTitle>Profile · Arranger</PageTitle>
 
 <h1>
-    Settings
+    Profile
 </h1>
 
 @if (error != null)
@@ -36,10 +36,10 @@ else
             Profile picture
         </h2>
 
-        <UserAvatar UserId="settings.UserId" Size="96" Revision="pictureRevision" />
+        <UserAvatar UserId="settings.UserId" UserName="@settings.UserName" PictureVersion="settings.PictureVersion" Size="96" />
         <div>
-            <InputFile class="input-file" accept="@ProfilePictureRules.AcceptedContentTypes" OnChange="UploadPictureAsync" disabled="@busy" />
-            @if (settings.HasProfilePicture)
+            <InputFile accept="@ProfilePictureRules.AcceptedContentTypes" OnChange="UploadPictureAsync" disabled="@busy" />
+            @if (settings.PictureVersion != null)
             {
                 <button class="button button-delete" disabled="@busy" @onclick="DeletePictureAsync">Remove picture</button>
             }
@@ -49,21 +49,21 @@ else
 
     <section>
         <h2>
-            Profile
+            Personal settings
         </h2>
 
         <form @onsubmit="SaveAsync">
             <div class="form">
-                <label class="label-text" for="handle">Handle</label>
-                <input class="input-text" id="handle" maxlength="@AccountRules.UserNameMaxLength" @bind="userName" />
+                <label for="username">Username</label>
+                <input id="username" maxlength="@AccountRules.UserNameMaxLength" @bind="userName" />
             </div>
-            <div class="form form-select">
-                <label class="label-text" for="time-zone">Time zone</label>
-                <FormComboBox TItem="string" Options="@TimeZoneOption.Options(timeZones)" SelectedOption="@timeZoneId" OnChanged="@(id => timeZoneId = id)" />
+            <div class="form">
+                <label for="time-zone">Time zone</label>
+                <FormComboBox TItem="string" Id="time-zone" Options="@TimeZoneOption.Options(timeZones)" SelectedOption="@timeZoneId" OnChanged="@(id => timeZoneId = id)" />
             </div>
-            <div class="form form-select">
-                <label class="label-text" for="currency">Default currency for new arrangements</label>
-                <FormComboBox TItem="string" Options="@Currencies.Options()" SelectedOption="@currency" OnChanged="@(code => currency = code)" />
+            <div class="form">
+                <label for="currency">Default currency for new arrangements</label>
+                <FormComboBox TItem="string" Id="currency" Options="@Currencies.Options()" SelectedOption="@currency" OnChanged="@(code => currency = code)" />
             </div>
             <button type="submit" class="button button-submit" disabled="@busy">Save</button>
         </form>
@@ -81,13 +81,12 @@ else
     private string? error;
     private string? message;
     private bool busy;
-    private int pictureRevision;
 
     /// <inheritdoc />
     protected override async Task OnInitializedAsync()
     {
         settings = await CurrentUser.GetSettingsAsync();
-        var zones = await Api.GetAsync<List<TimeZoneOption>>("api/time-zones");
+        var zones = await Api.GetAsync<List<TimeZoneOption>>(ApiRoutes.TimeZones);
         error = settings == null ? "The settings could not be loaded." : zones.Error;
         timeZones = zones.Value;
         if (settings == null || timeZones == null)
@@ -114,8 +113,16 @@ else
         }
 
         busy = true;
-        var result = await Api.SendAsync<UserSettings>(HttpMethod.Put, "api/me/settings", new UpdateUserSettingsRequest(userName, timeZoneId, currency));
-        busy = false;
+        ApiResult<UserSettings> result;
+        try
+        {
+            result = await Api.SendAsync<UserSettings>(HttpMethod.Put, ApiRoutes.MySettings, new UpdateUserSettingsRequest(userName, timeZoneId, currency));
+        }
+        finally
+        {
+            busy = false;
+        }
+
         if (!result.IsSuccess)
         {
             error = result.Error;
@@ -123,11 +130,10 @@ else
         }
 
         var renamed = result.Value.UserName != settings!.UserName;
-        settings = result.Value;
-        CurrentUser.Update(settings);
+        Apply(result.Value);
         if (renamed)
         {
-            // The handle is also in the authentication state, which only a full reload refreshes.
+            // The username is also in the authentication state, which only a full reload refreshes.
             Navigation.Refresh(forceReload: true);
             return;
         }
@@ -150,11 +156,7 @@ else
 
             using var content = new ByteArrayContent(picture.Value.Bytes);
             content.Headers.ContentType = new MediaTypeHeaderValue(picture.Value.ContentType);
-            error = await Api.SendAsync(HttpMethod.Put, "api/me/picture", content);
-            if (error == null)
-            {
-                SetHasPicture(true);
-            }
+            Apply(await Api.SendAsync<UserSettings>(HttpMethod.Put, ApiRoutes.MyPicture, content));
         }
         finally
         {
@@ -166,7 +168,7 @@ else
     {
         // A picture already in an accepted format and within both the byte and pixel limits is uploaded as-is, keeping
         // its exact quality and any transparency.
-        if (file.ContentType is "image/png" or "image/jpeg" or "image/webp" && file.Size <= ProfilePictureRules.MaxBytes)
+        if (file.ContentType is ProfilePictureRules.Png or ProfilePictureRules.Jpeg or ProfilePictureRules.Webp && file.Size <= ProfilePictureRules.MaxBytes)
         {
             var original = await ReadBytesAsync(file);
             if (ProfilePictureRules.ReadDimensions(original) is { } size
@@ -180,7 +182,7 @@ else
         // Anything larger (big phone photos and the like) is scaled down to the upload size and re-encoded, so it is
         // accepted rather than rejected. WebP and PNG keep an alpha channel, so re-encode them back to themselves;
         // everything else becomes JPEG.
-        var format = file.ContentType is "image/png" or "image/webp" ? file.ContentType : "image/jpeg";
+        var format = file.ContentType is ProfilePictureRules.Png or ProfilePictureRules.Webp ? file.ContentType : ProfilePictureRules.Jpeg;
         var image = await file.RequestImageFileAsync(format, ProfilePictureRules.UploadDimension, ProfilePictureRules.UploadDimension);
         return image.Size > ProfilePictureRules.MaxBytes ? null : (await ReadBytesAsync(image), image.ContentType);
     }
@@ -197,18 +199,28 @@ else
     {
         message = null;
         busy = true;
-        error = await Api.SendAsync(HttpMethod.Delete, "api/me/picture");
-        busy = false;
-        if (error == null)
+        try
         {
-            SetHasPicture(false);
+            Apply(await Api.SendAsync<UserSettings>(HttpMethod.Delete, ApiRoutes.MyPicture));
+        }
+        finally
+        {
+            busy = false;
         }
     }
 
-    private void SetHasPicture(bool hasPicture)
+    private void Apply(ApiResult<UserSettings> result)
     {
-        settings = settings! with { HasProfilePicture = hasPicture };
-        CurrentUser.Update(settings);
-        pictureRevision++;
+        error = result.Error;
+        if (result.IsSuccess)
+        {
+            Apply(result.Value);
+        }
+    }
+
+    private void Apply(UserSettings updated)
+    {
+        settings = updated;
+        CurrentUser.Update(updated);
     }
 }

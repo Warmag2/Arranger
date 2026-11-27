@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using Microsoft.EntityFrameworkCore;
+using Faemiyah.Arranger.Contracts.Users;
 using Faemiyah.Repository.Entities;
 
 namespace Faemiyah.Arranger.Data.Entities;
@@ -33,6 +34,6 @@ public class UserPicture : EntityBase<long>
     /// The MIME type of <see cref="Data"/>, detected from its content.
     /// </summary>
     [Required]
-    [MaxLength(32)]
+    [MaxLength(ProfilePictureRules.ContentTypeMaxLength)]
     public string ContentType { get; set; } = string.Empty;
 }

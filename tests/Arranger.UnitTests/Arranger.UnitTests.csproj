@@ -5,4 +5,8 @@
     <ProjectReference Include="..\..\src\Arranger.Server\Arranger.Server.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Update="Microsoft.NET.Test.Sdk" Version="18.12.0" />
+  </ItemGroup>
+
 </Project>

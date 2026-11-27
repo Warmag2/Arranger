@@ -7,6 +7,15 @@ namespace Faemiyah.Arranger.UnitTests;
 [TestFixture]
 public class AccountRulesTests
 {
+    [TestCase(7, false)]
+    [TestCase(8, true)]
+    [TestCase(128, true)]
+    [TestCase(129, false)]
+    public void IsValidPassword_ChecksLength(int length, bool expected)
+    {
+        AccountRules.IsValidPassword(new string('x', length)).Should().Be(expected);
+    }
+
     [TestCase("abc")]
     [TestCase("Warma")]
     [TestCase("a.b_c-d")]
@@ -29,20 +38,12 @@ public class AccountRulesTests
         AccountRules.IsValidUserName(userName).Should().BeFalse();
     }
 
-    [TestCase(7, false)]
-    [TestCase(8, true)]
-    [TestCase(128, true)]
-    [TestCase(129, false)]
-    public void IsValidPassword_ChecksLength(int length, bool expected)
-    {
-        AccountRules.IsValidPassword(new string('x', length)).Should().Be(expected);
-    }
-
     [Test]
     public void NormalizeUserName_UpperCasesInvariantly()
     {
         AccountRules.NormalizeUserName("Warma.i_9").Should().Be("WARMA.I_9");
     }
+
     [Test]
     public void ValidateSettings_AcceptsValidSettings()
     {

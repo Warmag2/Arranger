@@ -9,26 +9,28 @@
 
 <form @onsubmit="CreateAsync">
     <div class="form">
-        <input class="input-text" placeholder="Title" maxlength="@ArrangementRules.TitleMaxLength" @bind="title" />
+        <label for="arrangement-title">Title</label>
+        <input id="arrangement-title" maxlength="@ArrangementRules.TitleMaxLength" @bind="title" />
     </div>
     <div class="form">
-        <textarea class="input-text" rows="3" placeholder="Description (optional)" maxlength="@ArrangementRules.DescriptionMaxLength" @bind="description"></textarea>
+        <label for="arrangement-description">Description (optional)</label>
+        <textarea id="arrangement-description" rows="3" maxlength="@ArrangementRules.DescriptionMaxLength" @bind="description"></textarea>
     </div>
     <div class="form form-switch">
-        <input class="input-checkbox" type="checkbox" role="switch" id="schedule-enabled" @bind="isScheduleEnabled" />
-        <label class="label-checkbox" for="schedule-enabled">Schedule: find a time together</label>
+        <input type="checkbox" role="switch" id="schedule-enabled" @bind="isScheduleEnabled" />
+        <label for="schedule-enabled">Schedule: find a time together</label>
     </div>
     <div class="form form-switch">
-        <input class="input-checkbox" type="checkbox" role="switch" id="expenses-enabled" @bind="isExpensesEnabled" />
-        <label class="label-checkbox" for="expenses-enabled">Expenses: share costs</label>
+        <input type="checkbox" role="switch" id="expenses-enabled" @bind="isExpensesEnabled" />
+        <label for="expenses-enabled">Expenses: share costs</label>
     </div>
     @if (error != null)
     {
-        <div class="error ">@error</div>
+        <div class="error">@error</div>
     }
     <div class="form form-submit">
         <button type="submit" class="button button-submit" disabled="@busy">Create</button>
-        <a class="button button-cancel" href="">Cancel</a>
+        <a class="button" href="">Cancel</a>
     </div>
 </form>
 
@@ -42,16 +44,24 @@
 
     private async Task CreateAsync()
     {
-        error = ArrangementRules.ValidateDetails(ArrangementRules.NormalizeText(title), ArrangementRules.NormalizeText(description));
+        error = ArrangementRules.NormalizeDetails(title, description).Error;
         if (error != null)
         {
             return;
         }
 
         busy = true;
-        var request = new CreateArrangementRequest(title, description, isScheduleEnabled, isExpensesEnabled);
-        var result = await Api.SendAsync<ArrangementSnapshot>(HttpMethod.Post, "api/arrangements", request);
-        busy = false;
+        ApiResult<ArrangementSnapshot> result;
+        try
+        {
+            var request = new CreateArrangementRequest(title, description, !isScheduleEnabled, !isExpensesEnabled);
+            result = await Api.SendAsync<ArrangementSnapshot>(HttpMethod.Post, ApiRoutes.Arrangements, request);
+        }
+        finally
+        {
+            busy = false;
+        }
+
         if (result.IsSuccess)
         {
             Navigation.NavigateTo(result.Value.Id.ToString());

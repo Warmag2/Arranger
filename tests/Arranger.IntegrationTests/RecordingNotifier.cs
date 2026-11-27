@@ -16,6 +16,11 @@ public sealed class RecordingNotifier : IArrangementNotifier
     private readonly ConcurrentQueue<(Guid ArrangementId, ArrangementSnapshot? Snapshot)> _notifications = new();
 
     /// <summary>
+    /// Whether the next <see cref="ChangedAsync"/> throws instead of recording, standing in for an infrastructure failure.
+    /// </summary>
+    public bool FailNextChange { get; set; }
+
+    /// <summary>
     /// The notifications about one arrangement, in order. <b>null</b> stands for deletion.
     /// </summary>
     /// <param name="arrangementId">The public ID of the arrangement.</param>
@@ -28,6 +33,12 @@ public sealed class RecordingNotifier : IArrangementNotifier
     /// <inheritdoc />
     public Task ChangedAsync(ArrangementSnapshot snapshot)
     {
+        if (FailNextChange)
+        {
+            FailNextChange = false;
+            throw new InvalidOperationException("Simulated notifier failure.");
+        }
+
         _notifications.Enqueue((snapshot.Id, snapshot));
         return Task.CompletedTask;
     }

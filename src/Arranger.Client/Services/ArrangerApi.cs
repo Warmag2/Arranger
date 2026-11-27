@@ -2,9 +2,11 @@ using System;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Json;
+using System.Net.Mime;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Faemiyah.Arranger.Contracts;
+using Faemiyah.Common;
 using Microsoft.AspNetCore.Components;
 
 namespace Faemiyah.Arranger.Client.Services;
@@ -14,6 +16,9 @@ namespace Faemiyah.Arranger.Client.Services;
 /// </summary>
 public sealed class ArrangerApi
 {
+    private const string NoContentError = "The server sent no data.";
+    private const string UnreachableError = "Could not reach the server. Check your connection and try again.";
+
     private static readonly JsonSerializerOptions JsonOptions = CreateJsonOptions();
 
     private readonly HttpClient _http;
@@ -62,13 +67,43 @@ public sealed class ArrangerApi
     /// <param name="path">The relative URI.</param>
     /// <param name="body">The request body, or <b>null</b> for none.</param>
     /// <returns>The outcome.</returns>
-    public async Task<ApiResult<T>> SendAsync<T>(HttpMethod method, string path, object? body = null)
+    public Task<ApiResult<T>> SendAsync<T>(HttpMethod method, string path, object? body = null)
         where T : class
     {
-        using var response = await SendCoreAsync(method, path, body == null ? null : JsonContent.Create(body, options: JsonOptions));
-        return response.IsSuccessStatusCode
-            ? new ApiResult<T>(await response.Content.ReadFromJsonAsync<T>(JsonOptions), null)
-            : new ApiResult<T>(null, await ReadErrorAsync(response));
+        return SendAsync<T>(method, path, body == null ? null : JsonContent.Create(body, options: JsonOptions));
+    }
+
+    /// <summary>
+    /// Send a request with the given content, and read a value from the response.
+    /// </summary>
+    /// <typeparam name="T">The type of the value.</typeparam>
+    /// <param name="method">The HTTP method.</param>
+    /// <param name="path">The relative URI.</param>
+    /// <param name="content">The request content, or <b>null</b> for none.</param>
+    /// <returns>The outcome. A lost connection, a timeout or a response without content is an error.</returns>
+    public async Task<ApiResult<T>> SendAsync<T>(HttpMethod method, string path, HttpContent? content)
+        where T : class
+    {
+        try
+        {
+            using var response = await SendCoreAsync(method, path, content);
+            if (!response.IsSuccessStatusCode)
+            {
+                return new ApiResult<T>(null, await ReadErrorAsync(response));
+            }
+
+            if (response.StatusCode == HttpStatusCode.NoContent)
+            {
+                return new ApiResult<T>(null, NoContentError);
+            }
+
+            var value = await response.Content.ReadFromJsonAsync<T>(JsonOptions);
+            return value == null ? new ApiResult<T>(null, NoContentError) : new ApiResult<T>(value, null);
+        }
+        catch (Exception e) when (IsUnreachable(e))
+        {
+            return new ApiResult<T>(null, UnreachableError);
+        }
     }
 
     /// <summary>
@@ -77,11 +112,18 @@ public sealed class ArrangerApi
     /// <param name="method">The HTTP method.</param>
     /// <param name="path">The relative URI.</param>
     /// <param name="content">The request content, or <b>null</b> for none.</param>
-    /// <returns>The error message, or <b>null</b> on success.</returns>
+    /// <returns>The error message, or <b>null</b> on success. A lost connection or a timeout is an error.</returns>
     public async Task<string?> SendAsync(HttpMethod method, string path, HttpContent? content = null)
     {
-        using var response = await SendCoreAsync(method, path, content);
-        return response.IsSuccessStatusCode ? null : await ReadErrorAsync(response);
+        try
+        {
+            using var response = await SendCoreAsync(method, path, content);
+            return response.IsSuccessStatusCode ? null : await ReadErrorAsync(response);
+        }
+        catch (Exception e) when (IsUnreachable(e))
+        {
+            return UnreachableError;
+        }
     }
 
     private static JsonSerializerOptions CreateJsonOptions()
@@ -91,14 +133,27 @@ public sealed class ArrangerApi
         return options;
     }
 
+    private static bool IsUnreachable(Exception e)
+    {
+        // A lost connection, or the HttpClient timeout, which is reported as a cancellation.
+        return e is HttpRequestException or TaskCanceledException { InnerException: TimeoutException };
+    }
+
     private static async Task<string> ReadErrorAsync(HttpResponseMessage response)
     {
-        if (response.Content.Headers.ContentType?.MediaType == "application/problem+json")
+        if (response.Content.Headers.ContentType?.MediaType == MediaTypeNames.Application.ProblemJson)
         {
-            var problem = await response.Content.ReadFromJsonAsync<ProblemResponse>(JsonOptions);
-            if ((problem?.Detail ?? problem?.Title) is { } message)
+            try
             {
-                return message;
+                var problem = await response.Content.ReadFromJsonAsync<ProblemResponse>(JsonOptions);
+                if ((problem?.Detail ?? problem?.Title) is { } message)
+                {
+                    return message;
+                }
+            }
+            catch (JsonException)
+            {
+                // An unreadable problem body still has a status code to report.
             }
         }
 

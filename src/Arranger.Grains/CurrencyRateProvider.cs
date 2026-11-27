@@ -17,7 +17,8 @@ namespace Faemiyah.Arranger.Grains;
 /// </summary>
 /// <remarks>
 /// The rates are held in memory for the lifetime of the process and refetched only when they are older than
-/// <see cref="RefreshInterval"/> and someone asks for them, or when a refresh is forced. A failed fetch keeps the last
+/// <see cref="RefreshInterval"/> and someone asks for them. The upstream updates once a day, so refetching sooner would
+/// gain nothing. A failed fetch keeps the last
 /// known rates. One upstream pivot table (per one unit of the pivot currency) is held and cross rates are computed from
 /// it, so adding a currency costs no extra request. A single-entry gate collapses concurrent fetches into one request.
 /// </remarks>
@@ -29,9 +30,19 @@ public sealed class CurrencyRateProvider : ICurrencyRateProvider, IDisposable
     public const string HttpClientName = "CurrencyRates";
 
     /// <summary>
+    /// The upstream address of the latest rates against <see cref="PivotCurrency"/>, relative to the base address.
+    /// </summary>
+    private const string LatestRatesPath = "v6/latest/" + PivotCurrency;
+
+    /// <summary>
     /// The currency every upstream rate is quoted against. It is the most widely covered base.
     /// </summary>
     private const string PivotCurrency = "USD";
+
+    /// <summary>
+    /// The upstream result of a successful request.
+    /// </summary>
+    private const string SuccessResult = "success";
 
     /// <summary>
     /// How old the cached rates may be before the next request refetches them.
@@ -42,8 +53,9 @@ public sealed class CurrencyRateProvider : ICurrencyRateProvider, IDisposable
     private readonly TimeProvider _timeProvider;
     private readonly ILogger<CurrencyRateProvider> _logger;
     private readonly SemaphoreSlim _gate = new(1, 1);
-    private Dictionary<string, decimal>? _perPivot;
-    private DateTimeOffset _fetchedAt;
+
+    // Replaced whole, so that a reader outside the gate sees a table and its fetch time together.
+    private volatile RateTable? _table;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="CurrencyRateProvider"/> class.
@@ -65,7 +77,7 @@ public sealed class CurrencyRateProvider : ICurrencyRateProvider, IDisposable
     }
 
     /// <inheritdoc />
-    public async Task<IReadOnlyDictionary<string, decimal>> GetRatesAsync(string baseCurrency, IReadOnlyCollection<string> currencies, bool forceRefresh, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyDictionary<string, decimal>> GetRatesAsync(string baseCurrency, IReadOnlyCollection<string> currencies, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrEmpty(baseCurrency);
         ArgumentNullException.ThrowIfNull(currencies);
@@ -76,7 +88,7 @@ public sealed class CurrencyRateProvider : ICurrencyRateProvider, IDisposable
             return result;
         }
 
-        var table = await GetTableAsync(forceRefresh, cancellationToken);
+        var table = await GetTableAsync(cancellationToken);
         if (table == null || !table.TryGetValue(baseCurrency, out var basePerPivot) || basePerPivot <= 0)
         {
             return result;
@@ -100,30 +112,30 @@ public sealed class CurrencyRateProvider : ICurrencyRateProvider, IDisposable
         return result;
     }
 
-    private async Task<Dictionary<string, decimal>?> GetTableAsync(bool forceRefresh, CancellationToken cancellationToken)
+    private async Task<Dictionary<string, decimal>?> GetTableAsync(CancellationToken cancellationToken)
     {
-        if (!forceRefresh && IsFresh())
+        if (FreshTable() is { } fresh)
         {
-            return _perPivot;
+            return fresh.PerPivot;
         }
 
         await _gate.WaitAsync(cancellationToken);
         try
         {
             // Another caller may have refreshed the rates while this one waited for the gate.
-            if (!forceRefresh && IsFresh())
+            if (FreshTable() is { } refreshed)
             {
-                return _perPivot;
+                return refreshed.PerPivot;
             }
 
             var fetched = await FetchAsync(cancellationToken);
             if (fetched is { Count: > 0 })
             {
-                _perPivot = fetched;
-                _fetchedAt = _timeProvider.GetUtcNow();
+                _table = new RateTable(fetched, _timeProvider.GetUtcNow());
             }
         }
-        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException)
+        catch (Exception exception) when (exception is HttpRequestException or JsonException
+            || exception is TaskCanceledException && !cancellationToken.IsCancellationRequested)
         {
             _logger.LogWarning(exception, "Could not fetch currency rates from the upstream service. Keeping the last known rates.");
         }
@@ -132,22 +144,23 @@ public sealed class CurrencyRateProvider : ICurrencyRateProvider, IDisposable
             _gate.Release();
         }
 
-        return _perPivot;
+        return _table?.PerPivot;
     }
 
-    private bool IsFresh()
+    private RateTable? FreshTable()
     {
-        return _perPivot != null && _timeProvider.GetUtcNow() - _fetchedAt < RefreshInterval;
+        var table = _table;
+        return table != null && _timeProvider.GetUtcNow() - table.FetchedAt < RefreshInterval ? table : null;
     }
 
     private async Task<Dictionary<string, decimal>?> FetchAsync(CancellationToken cancellationToken)
     {
         var client = _httpClientFactory.CreateClient(HttpClientName);
-        using var response = await client.GetAsync($"v6/latest/{PivotCurrency}", cancellationToken);
+        using var response = await client.GetAsync(LatestRatesPath, cancellationToken);
         response.EnsureSuccessStatusCode();
 
         var payload = await response.Content.ReadFromJsonAsync<UpstreamResponse>(cancellationToken);
-        if (payload is null || !string.Equals(payload.Result, "success", StringComparison.Ordinal) || payload.Rates is null)
+        if (payload is null || !string.Equals(payload.Result, SuccessResult, StringComparison.Ordinal) || payload.Rates is null)
         {
             _logger.LogWarning("The currency rate service returned an unexpected payload (result '{Result}').", payload?.Result);
             return null;
@@ -166,10 +179,16 @@ public sealed class CurrencyRateProvider : ICurrencyRateProvider, IDisposable
     }
 
     /// <summary>
+    /// The pivot table and when it was fetched.
+    /// </summary>
+    /// <param name="PerPivot">The units of each currency one unit of the pivot currency buys.</param>
+    /// <param name="FetchedAt">When the table was fetched.</param>
+    private sealed record RateTable(Dictionary<string, decimal> PerPivot, DateTimeOffset FetchedAt);
+
+    /// <summary>
     /// The shape of the open.er-api.com latest-rates response that this provider reads.
     /// </summary>
     private sealed record UpstreamResponse(
         [property: JsonPropertyName("result")] string? Result,
-        [property: JsonPropertyName("base_code")] string? BaseCode,
         [property: JsonPropertyName("rates")] Dictionary<string, decimal>? Rates);
 }

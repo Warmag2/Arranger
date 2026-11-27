@@ -14,7 +14,7 @@ public class PostgreSqlFixture
     /// <summary>
     /// The container image, the same as in docker-compose.dev.yml.
     /// </summary>
-    private const string PostgreSqlImage = "postgres:17-alpine";
+    private const string PostgreSqlImage = "postgres:18-alpine";
 
     private static PostgreSqlContainer? _container;
 

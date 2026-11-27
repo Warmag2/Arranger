@@ -25,12 +25,11 @@ public interface IArrangementGrain : IGrainWithGuidKey
     Task<CommandResult> CreateAsync(Guid userId, CreateArrangementRequest request);
 
     /// <summary>
-    /// Get the current state.
+    /// Get the current state. Anyone signed in who has the link may read it, so there is no acting user.
     /// </summary>
-    /// <param name="userId">The acting user.</param>
     /// <returns>The arrangement.</returns>
     [Alias("GetSnapshot")]
-    Task<CommandResult> GetSnapshotAsync(Guid userId);
+    Task<CommandResult> GetSnapshotAsync();
 
     /// <summary>
     /// Join the arrangement. Joining again is a no-op.
@@ -50,7 +49,7 @@ public interface IArrangementGrain : IGrainWithGuidKey
 
     /// <summary>
     /// Change the currency balances are settled in, clearing the exchange rates. The old base currency stays available.
-    /// Admin only.
+    /// Admin only, while the expenses are enabled.
     /// </summary>
     /// <param name="userId">The acting user.</param>
     /// <param name="currency">The ISO 4217 currency.</param>
@@ -59,9 +58,8 @@ public interface IArrangementGrain : IGrainWithGuidKey
     Task<CommandResult> SetBaseCurrencyAsync(Guid userId, string currency);
 
     /// <summary>
-    /// Add a currency for expenses (admin only), or change its exchange rate and conversion loss (any member). A
-    /// currency added without a rate is seeded with the latest market rate when one is available. Requires the
-    /// expenses to be enabled.
+    /// Add a currency for expenses, or change its exchange rate and conversion loss. A currency added without a rate is
+    /// seeded with the latest market rate when one is available. Admin only, while the expenses are enabled.
     /// </summary>
     /// <param name="userId">The acting user.</param>
     /// <param name="currency">The ISO 4217 currency, other than the base currency.</param>
@@ -80,7 +78,7 @@ public interface IArrangementGrain : IGrainWithGuidKey
     Task<CommandResult> RemoveCurrencyAsync(Guid userId, string currency);
 
     /// <summary>
-    /// Refresh every added currency's exchange rate from the latest market rates, keeping each conversion loss. Admin
+    /// Refresh every added currency's exchange rate from the cached market rates, keeping each conversion loss. Admin
     /// only.
     /// </summary>
     /// <param name="userId">The acting user.</param>
@@ -98,11 +96,10 @@ public interface IArrangementGrain : IGrainWithGuidKey
     Task<CommandResult> SetParticipationOpenAsync(Guid userId, bool isOpen);
 
     /// <summary>
-    /// Open or close the arrangement for new time suggestions from non-admin members. When closed, only admins can
-    /// add times. Admin only.
+    /// Allow or stop non-admin members adding and removing times. When stopped, only admins can. Admin only.
     /// </summary>
     /// <param name="userId">The acting user.</param>
-    /// <param name="isAllowed">Whether non-admin members may suggest new times.</param>
+    /// <param name="isAllowed">Whether non-admin members may add and remove times.</param>
     /// <returns>The arrangement.</returns>
     [Alias("SetAllowNewTimes")]
     Task<CommandResult> SetAllowNewTimesAsync(Guid userId, bool isAllowed);
@@ -152,7 +149,7 @@ public interface IArrangementGrain : IGrainWithGuidKey
     Task RefreshMemberAsync(Guid memberUserId);
 
     /// <summary>
-    /// Propose a time. Members only, while the poll is open.
+    /// Propose a time, while the poll is open. Admins, or any member when the times are open to all.
     /// </summary>
     /// <param name="userId">The acting user.</param>
     /// <param name="request">The time.</param>
@@ -161,7 +158,8 @@ public interface IArrangementGrain : IGrainWithGuidKey
     Task<CommandResult> AddTimeOptionAsync(Guid userId, AddTimeOptionRequest request);
 
     /// <summary>
-    /// Remove a proposed time and its votes. Members only, while the poll is open.
+    /// Remove a proposed time and its votes, while the poll is open. Admins, or any member when the times are open to
+    /// all. Removing the picked time clears the pick.
     /// </summary>
     /// <param name="userId">The acting user.</param>
     /// <param name="timeOptionId">The time option.</param>
@@ -199,7 +197,7 @@ public interface IArrangementGrain : IGrainWithGuidKey
     Task<CommandResult> AddExpenseAsync(Guid userId, ExpenseRequest request);
 
     /// <summary>
-    /// Replace any expense. Members only, while the expenses are enabled.
+    /// Replace an expense. The member who paid or an admin, while the expenses are enabled.
     /// </summary>
     /// <param name="userId">The acting user.</param>
     /// <param name="expenseId">The expense.</param>
@@ -209,7 +207,7 @@ public interface IArrangementGrain : IGrainWithGuidKey
     Task<CommandResult> UpdateExpenseAsync(Guid userId, long expenseId, ExpenseRequest request);
 
     /// <summary>
-    /// Delete any expense. Members only, while the expenses are enabled.
+    /// Delete an expense. The member who paid or an admin, while the expenses are enabled.
     /// </summary>
     /// <param name="userId">The acting user.</param>
     /// <param name="expenseId">The expense.</param>

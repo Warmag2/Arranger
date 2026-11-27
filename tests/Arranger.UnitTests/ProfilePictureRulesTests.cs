@@ -25,23 +25,13 @@ public class ProfilePictureRulesTests
     }
 
     [Test]
-    public void ReadDimensions_Png()
-    {
-        var data = new byte[]
-        {
-            0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,
-            0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x02, 0x00,
-        };
-
-        ProfilePictureRules.ReadDimensions(data).Should().Be((1024, 512));
-    }
-
-    [Test]
     public void ReadDimensions_Jpeg()
     {
         var data = new byte[] { 0xFF, 0xD8, 0xFF, 0xC0, 0x00, 0x11, 0x08, 0x01, 0x00, 0x02, 0x00 };
 
-        ProfilePictureRules.ReadDimensions(data).Should().Be((512, 256));
+        var dimensions = ProfilePictureRules.ReadDimensions(data);
+
+        dimensions.Should().Be((512, 256));
     }
 
     [Test]
@@ -52,7 +42,30 @@ public class ProfilePictureRulesTests
             0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x04, 0xAA, 0xBB, 0xFF, 0xC0, 0x00, 0x11, 0x08, 0x00, 0x10, 0x00, 0x20,
         };
 
-        ProfilePictureRules.ReadDimensions(data).Should().Be((32, 16));
+        var dimensions = ProfilePictureRules.ReadDimensions(data);
+
+        dimensions.Should().Be((32, 16));
+    }
+
+    [Test]
+    public void ReadDimensions_Png()
+    {
+        var data = new byte[]
+        {
+            0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,
+            0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 0x02, 0x00,
+        };
+
+        var dimensions = ProfilePictureRules.ReadDimensions(data);
+
+        dimensions.Should().Be((1024, 512));
+    }
+
+    [TestCase(new byte[] { 0x3C, 0x73 })]
+    [TestCase(new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A })]
+    public void ReadDimensions_ReturnsNullWhenUnknownOrTruncated(byte[] data)
+    {
+        ProfilePictureRules.ReadDimensions(data).Should().BeNull();
     }
 
     [Test]
@@ -64,13 +77,8 @@ public class ProfilePictureRulesTests
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF, 0x03, 0x00, 0xFF, 0x02, 0x00,
         };
 
-        ProfilePictureRules.ReadDimensions(data).Should().Be((1024, 768));
-    }
+        var dimensions = ProfilePictureRules.ReadDimensions(data);
 
-    [TestCase(new byte[] { 0x3C, 0x73 })]
-    [TestCase(new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A })]
-    public void ReadDimensions_ReturnsNullWhenUnknownOrTruncated(byte[] data)
-    {
-        ProfilePictureRules.ReadDimensions(data).Should().BeNull();
+        dimensions.Should().Be((1024, 768));
     }
 }

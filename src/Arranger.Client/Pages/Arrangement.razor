@@ -18,7 +18,10 @@
 
 @if (snapshot == null)
 {
-    <p>@(missing ? "This arrangement does not exist. It may have been deleted." : "Connecting…")</p>
+    @if (missing || error == null)
+    {
+        <p>@(missing ? "This arrangement does not exist. It may have been deleted." : "Connecting…")</p>
+    }
 }
 else
 {
@@ -105,7 +108,14 @@ else
         snapshot = null;
         missing = false;
         connectedId = Id;
-        userId = (await CurrentUser.GetSettingsAsync())?.UserId ?? Guid.Empty;
+        if (await CurrentUser.GetSettingsAsync() is not { } settings)
+        {
+            // Without them every member would look like an outsider, and times would show in UTC.
+            error = "Could not load your settings. Reload the page.";
+            return;
+        }
+
+        userId = settings.UserId;
         live = new ArrangementLiveConnection(Navigation, JS, Id, OnSnapshotAsync, () => InvokeAsync(StateHasChanged));
         await live.StartAsync();
     }
@@ -169,9 +179,20 @@ else
     {
         busy = true;
         error = null;
-        var path = action == null ? $"api/arrangements/{Id}" : $"api/arrangements/{Id}/{action}";
-        var result = await Api.SendAsync<ArrangementSnapshot>(method, path, body);
-        busy = false;
+
+        // Child components call this through a plain delegate, which does not re-render this page by itself.
+        StateHasChanged();
+        ApiResult<ArrangementSnapshot> result;
+        try
+        {
+            var path = action == null ? ApiRoutes.Arrangement(Id) : $"{ApiRoutes.Arrangement(Id)}/{action}";
+            result = await Api.SendAsync<ArrangementSnapshot>(method, path, body);
+        }
+        finally
+        {
+            busy = false;
+        }
+
         if (result.IsSuccess)
         {
             Show(result.Value);
@@ -181,7 +202,7 @@ else
             error = result.Error;
         }
 
-        // Child components call this through a plain delegate, which does not re-render this page by itself.
+        // Again, for the result.
         StateHasChanged();
         return result.IsSuccess;
     }

@@ -28,14 +28,33 @@ public static class ArrangementRules
     public const int MaxTimeOptions = 100;
 
     /// <summary>
-    /// The earliest year a time option may start in. Catches missing values, which arrive as year 1.
+    /// The earliest year a date in an arrangement, such as a time option or an expense, may be in. Catches missing
+    /// values, which arrive as year 1.
     /// </summary>
-    public const int MinTimeOptionYear = 2000;
+    public const int MinYear = 2000;
 
     /// <summary>
-    /// The latest year a time option may end in.
+    /// The latest year a date in an arrangement, such as a time option or an expense, may be in.
     /// </summary>
-    public const int MaxTimeOptionYear = 2999;
+    public const int MaxYear = 2999;
+
+    /// <summary>
+    /// The maximum length of a stored <see cref="VoteAnswer"/> name.
+    /// </summary>
+    public const int VoteAnswerMaxLength = 8;
+
+    /// <summary>
+    /// Normalize a title and description, then validate the normalized values.
+    /// </summary>
+    /// <param name="title">The title as entered.</param>
+    /// <param name="description">The description as entered.</param>
+    /// <returns>The normalized title and description, and an error message or <b>null</b> when valid.</returns>
+    public static (string Title, string Description, string? Error) NormalizeDetails(string? title, string? description)
+    {
+        var normalizedTitle = NormalizeText(title);
+        var normalizedDescription = NormalizeText(description);
+        return (normalizedTitle, normalizedDescription, ValidateDetails(normalizedTitle, normalizedDescription));
+    }
 
     /// <summary>
     /// Trim a user-entered text, treating <b>null</b> as empty.
@@ -80,7 +99,7 @@ public static class ArrangementRules
     /// <returns>The time truncated to the minute.</returns>
     public static DateTime TruncateToMinute(DateTime time)
     {
-        return new DateTime(time.Ticks - (time.Ticks % TimeSpan.TicksPerMinute), time.Kind);
+        return new DateTime(time.Ticks - time.Ticks % TimeSpan.TicksPerMinute, time.Kind);
     }
 
     /// <summary>
@@ -98,14 +117,14 @@ public static class ArrangementRules
             return "Times must be in UTC.";
         }
 
-        if (dateBegin.Year < MinTimeOptionYear || (dateEnd ?? dateBegin).Year > MaxTimeOptionYear)
+        if (dateBegin.Year < MinYear || (dateEnd ?? dateBegin).Year > MaxYear)
         {
-            return $"Times must be between the years {MinTimeOptionYear} and {MaxTimeOptionYear}.";
+            return $"Times must be between the years {MinYear} and {MaxYear}.";
         }
 
         if (isWholeDay)
         {
-            if (dateBegin.TimeOfDay != TimeSpan.Zero || (dateEnd is { } wholeEnd && wholeEnd.TimeOfDay != TimeSpan.Zero))
+            if (dateBegin.TimeOfDay != TimeSpan.Zero || dateEnd is { } wholeEnd && wholeEnd.TimeOfDay != TimeSpan.Zero)
             {
                 return "A whole-day option is a date without times.";
             }

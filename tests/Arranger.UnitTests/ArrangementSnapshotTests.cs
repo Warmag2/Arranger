@@ -33,6 +33,8 @@ public class ArrangementSnapshotTests
             new Dictionary<string, ExchangeRateSnapshot>(),
             new ArrangementVersion(Guid.NewGuid(), 1));
 
-        snapshot.DefaultTab().Should().Be(expected);
+        var tab = snapshot.DefaultTab();
+
+        tab.Should().Be(expected);
     }
 }

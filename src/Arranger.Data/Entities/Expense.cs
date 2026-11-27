@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using Faemiyah.Arranger.Contracts;
+using Faemiyah.Arranger.Contracts.Arrangements;
 using Faemiyah.Repository.Entities;
 
 namespace Faemiyah.Arranger.Data.Entities;
@@ -25,7 +27,7 @@ public class Expense : EntityBase<long>
     /// The description.
     /// </summary>
     [Required]
-    [MaxLength(200)]
+    [MaxLength(ExpenseRules.DescriptionMaxLength)]
     public string Description { get; set; } = string.Empty;
 
     /// <summary>
@@ -38,7 +40,7 @@ public class Expense : EntityBase<long>
     /// The ISO 4217 currency.
     /// </summary>
     [Required]
-    [MaxLength(3)]
+    [MaxLength(Currencies.CodeLength)]
     public string Currency { get; set; } = string.Empty;
 
     /// <summary>

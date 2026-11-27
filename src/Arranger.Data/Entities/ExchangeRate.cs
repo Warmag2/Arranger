@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using Microsoft.EntityFrameworkCore;
+using Faemiyah.Arranger.Contracts;
 using Faemiyah.Repository.Entities;
 
 namespace Faemiyah.Arranger.Data.Entities;
@@ -25,7 +26,7 @@ public class ExchangeRate : EntityBase<long>
     /// The ISO 4217 currency, other than the base currency.
     /// </summary>
     [Required]
-    [MaxLength(3)]
+    [MaxLength(Currencies.CodeLength)]
     public string Currency { get; set; } = string.Empty;
 
     /// <summary>

@@ -8,26 +8,31 @@ namespace Faemiyah.Arranger.UnitTests;
 [TestFixture]
 public class ArrangementRulesTests
 {
+    private static readonly DateTime Day = new(2026, 6, 19, 0, 0, 0, DateTimeKind.Utc);
+
+    [Test]
+    public void NormalizeDetails_AcceptsTitleAtLimitAfterTrimming()
+    {
+        ArrangementRules.NormalizeDetails(new string('a', ArrangementRules.TitleMaxLength) + " ", null).Error.Should().BeNull();
+    }
+
+    [Test]
+    public void NormalizeDetails_RejectsBlankTitle()
+    {
+        ArrangementRules.NormalizeDetails("   ", "x").Error.Should().NotBeNull();
+    }
+
+    [Test]
+    public void NormalizeDetails_TrimsText()
+    {
+        ArrangementRules.NormalizeDetails(" Sauna ", null).Should().Be(("Sauna", string.Empty, (string?)null));
+    }
+
     [TestCase(null, "")]
     [TestCase("  Sauna \n", "Sauna")]
     public void NormalizeText_Trims(string? text, string expected)
     {
         ArrangementRules.NormalizeText(text).Should().Be(expected);
-    }
-
-    [Test]
-    public void ValidateDetails_AcceptsLimits()
-    {
-        ArrangementRules.ValidateDetails(new string('a', ArrangementRules.TitleMaxLength), new string('b', ArrangementRules.DescriptionMaxLength)).Should().BeNull();
-        ArrangementRules.ValidateDetails("a", string.Empty).Should().BeNull();
-    }
-
-    [Test]
-    public void ValidateDetails_RejectsEmptyAndTooLong()
-    {
-        ArrangementRules.ValidateDetails(string.Empty, string.Empty).Should().NotBeNull();
-        ArrangementRules.ValidateDetails(new string('a', ArrangementRules.TitleMaxLength + 1), string.Empty).Should().NotBeNull();
-        ArrangementRules.ValidateDetails("a", new string('b', ArrangementRules.DescriptionMaxLength + 1)).Should().NotBeNull();
     }
 
     [Test]
@@ -39,27 +44,53 @@ public class ArrangementRulesTests
         truncated.Kind.Should().Be(DateTimeKind.Utc);
     }
 
-    [Test]
-    public void ValidateTimeOption_AcceptsValid()
+    [TestCase(ArrangementRules.TitleMaxLength, ArrangementRules.DescriptionMaxLength)]
+    [TestCase(1, 0)]
+    public void ValidateDetails_AcceptsLimits(int titleLength, int descriptionLength)
     {
-        var day = new DateTime(2026, 6, 19, 0, 0, 0, DateTimeKind.Utc);
+        ArrangementRules.ValidateDetails(new string('a', titleLength), new string('b', descriptionLength)).Should().BeNull();
+    }
 
-        ArrangementRules.ValidateTimeOption(day, null, true).Should().BeNull();
-        ArrangementRules.ValidateTimeOption(day, day.AddDays(2), true).Should().BeNull();
-        ArrangementRules.ValidateTimeOption(day.AddHours(18), null, false).Should().BeNull();
-        ArrangementRules.ValidateTimeOption(day.AddHours(18), day.AddHours(26), false).Should().BeNull();
+    [TestCase(0, 0)]
+    [TestCase(ArrangementRules.TitleMaxLength + 1, 0)]
+    [TestCase(1, ArrangementRules.DescriptionMaxLength + 1)]
+    public void ValidateDetails_RejectsEmptyAndTooLong(int titleLength, int descriptionLength)
+    {
+        ArrangementRules.ValidateDetails(new string('a', titleLength), new string('b', descriptionLength)).Should().NotBeNull();
+    }
+
+    [TestCase(0, null, true)]
+    [TestCase(0, 48, true)]
+    [TestCase(18, null, false)]
+    [TestCase(18, 26, false)]
+    public void ValidateTimeOption_AcceptsValid(int beginHours, int? endHours, bool isWholeDay)
+    {
+        ArrangementRules.ValidateTimeOption(Day.AddHours(beginHours), DayAt(endHours), isWholeDay).Should().BeNull();
+    }
+
+    [TestCase(1, null, true)]
+    [TestCase(0, 30, true)]
+    [TestCase(0, 0, true)]
+    [TestCase(18, 18, false)]
+    public void ValidateTimeOption_RejectsInvalid(int beginHours, int? endHours, bool isWholeDay)
+    {
+        ArrangementRules.ValidateTimeOption(Day.AddHours(beginHours), DayAt(endHours), isWholeDay).Should().NotBeNull();
     }
 
     [Test]
-    public void ValidateTimeOption_RejectsInvalid()
+    public void ValidateTimeOption_RejectsNonUtc()
     {
-        var day = new DateTime(2026, 6, 19, 0, 0, 0, DateTimeKind.Utc);
+        ArrangementRules.ValidateTimeOption(DateTime.SpecifyKind(Day, DateTimeKind.Local), null, true).Should().NotBeNull();
+    }
 
-        ArrangementRules.ValidateTimeOption(DateTime.SpecifyKind(day, DateTimeKind.Local), null, true).Should().NotBeNull();
+    [Test]
+    public void ValidateTimeOption_RejectsYearOutOfRange()
+    {
         ArrangementRules.ValidateTimeOption(new DateTime(1999, 1, 1, 0, 0, 0, DateTimeKind.Utc), null, true).Should().NotBeNull();
-        ArrangementRules.ValidateTimeOption(day.AddHours(1), null, true).Should().NotBeNull();
-        ArrangementRules.ValidateTimeOption(day, day.AddHours(30), true).Should().NotBeNull();
-        ArrangementRules.ValidateTimeOption(day, day, true).Should().NotBeNull();
-        ArrangementRules.ValidateTimeOption(day.AddHours(18), day.AddHours(18), false).Should().NotBeNull();
+    }
+
+    private static DateTime? DayAt(int? hours)
+    {
+        return hours is null ? null : Day.AddHours(hours.Value);
     }
 }

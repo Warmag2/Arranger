@@ -9,6 +9,7 @@ using Faemiyah.Arranger.Server.Endpoints;
 using Faemiyah.Arranger.Server.Hosting;
 using Faemiyah.Arranger.Server.Realtime;
 using Faemiyah.Arranger.Server.Users;
+using Faemiyah.Common.Hosting.Logging;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.DataProtection;
@@ -19,11 +20,12 @@ using Microsoft.Extensions.Hosting;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.AddArrangerLogging();
+builder.Logging.AddFaemiyahLogging();
 builder.AddArrangerOrleans();
 builder.Services.ConfigureArrangerJson();
 builder.Services.AddArrangerData(builder.Configuration);
-builder.Services.AddArrangerProxyAndRateLimiting(builder.Configuration);
+builder.Services.AddArrangerForwardedHeaders(builder.Configuration);
+builder.Services.AddArrangerRateLimiting();
 builder.Services.AddArrangerRealtime();
 builder.Services.AddArrangerCurrencyRates();
 builder.Services.AddSingleton<TimeZoneCatalog>();
@@ -44,7 +46,7 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
         options.Cookie.Name = "Arranger.Auth";
         options.Cookie.HttpOnly = true;
         options.Cookie.SameSite = SameSiteMode.Lax;
-        options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
+        options.Cookie.SecurePolicy = builder.Environment.IsDevelopment() ? CookieSecurePolicy.SameAsRequest : CookieSecurePolicy.Always;
         options.LoginPath = "/Account/Login";
         options.LogoutPath = "/Account/Logout";
         options.AccessDeniedPath = "/Account/AccessDenied";

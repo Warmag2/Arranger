@@ -1,5 +1,3 @@
-using System;
-
 namespace Faemiyah.Arranger.Contracts.Arrangements;
 
 /// <summary>

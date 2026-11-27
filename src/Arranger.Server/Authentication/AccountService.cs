@@ -5,7 +5,9 @@ using System.Threading;
 using System.Threading.Tasks;
 using Faemiyah.Arranger.Contracts.Accounts;
 using Faemiyah.Arranger.Data.Entities;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Logging;
 using Faemiyah.Repository.Interfaces;
@@ -58,26 +60,26 @@ public sealed class AccountService
     {
         if (!AccountRules.IsValidUserName(userName))
         {
-            return new AccountResult(AccountStatus.InvalidUserName, null);
+            return AccountResult.Failed(AccountStatus.InvalidUserName);
         }
 
         if (!AccountRules.IsValidPassword(password))
         {
-            return new AccountResult(AccountStatus.InvalidPassword, null);
+            return AccountResult.Failed(AccountStatus.InvalidPassword);
         }
 
         var normalizedUserName = AccountRules.NormalizeUserName(userName);
         var user = new User
         {
             UserName = userName,
-            TimeZoneId = AccountRules.IsKnownTimeZone(timeZoneId) ? timeZoneId! : "UTC",
+            TimeZoneId = AccountRules.IsKnownTimeZone(timeZoneId) ? timeZoneId! : AccountRules.DefaultTimeZoneId,
         };
         user.PasswordHash = _passwordHasher.HashPassword(user, password);
 
         var created = await _users.AddAsync(user, u => u.NormalizedUserName == normalizedUserName, cancellationToken);
         if (!created.IsSuccess)
         {
-            return new AccountResult(AccountStatus.UserNameTaken, null);
+            return AccountResult.Failed(AccountStatus.UserNameTaken);
         }
 
         _logger.LogInformation("Registered user {UserId}.", created.Value.UniqueId);
@@ -135,18 +137,18 @@ public sealed class AccountService
     {
         if (!AccountRules.IsValidPassword(newPassword))
         {
-            return new AccountResult(AccountStatus.InvalidPassword, null);
+            return AccountResult.Failed(AccountStatus.InvalidPassword);
         }
 
-        var user = await _users.GetAsync(u => u.UniqueId == userId, cancellationToken: cancellationToken);
+        var user = await _users.GetAsync(userId, cancellationToken: cancellationToken);
         if (user == null)
         {
-            return new AccountResult(AccountStatus.UserNotFound, null);
+            return AccountResult.Failed(AccountStatus.UserNotFound);
         }
 
         if (_passwordHasher.VerifyHashedPassword(user, user.PasswordHash, currentPassword ?? string.Empty) == PasswordVerificationResult.Failed)
         {
-            return new AccountResult(AccountStatus.WrongPassword, null);
+            return AccountResult.Failed(AccountStatus.WrongPassword);
         }
 
         user.PasswordHash = _passwordHasher.HashPassword(user, newPassword);
@@ -155,7 +157,7 @@ public sealed class AccountService
         var updated = await _users.UpdateAsync(user, cancellationToken);
         if (!updated.IsSuccess)
         {
-            return new AccountResult(updated.Status == OperationStatus.NotFound ? AccountStatus.UserNotFound : AccountStatus.Conflict, null);
+            return AccountResult.Failed(updated.Status == OperationStatus.NotFound ? AccountStatus.UserNotFound : AccountStatus.Conflict);
         }
 
         _logger.LogInformation("User {UserId} changed their password.", userId);
@@ -171,7 +173,7 @@ public sealed class AccountService
     /// <returns><b>true</b> when the cookie may still be used.</returns>
     public async Task<bool> IsSecurityStampValidAsync(Guid userId, Guid securityStamp, CancellationToken cancellationToken = default)
     {
-        var user = await _users.GetAsync(u => u.UniqueId == userId, cancellationToken: cancellationToken);
+        var user = await _users.GetAsync(userId, cancellationToken: cancellationToken);
         return user != null && user.SecurityStamp == securityStamp;
     }
 
@@ -204,6 +206,22 @@ public sealed class AccountService
     {
         ArgumentNullException.ThrowIfNull(principal);
         return Guid.TryParse(principal.FindFirstValue(ClaimTypes.NameIdentifier), out var userId) ? userId : null;
+    }
+
+    /// <summary>
+    /// Sign a user in by issuing the authentication cookie.
+    /// </summary>
+    /// <param name="httpContext">The HTTP context of the request.</param>
+    /// <param name="user">The user.</param>
+    /// <param name="isPersistent">Whether the cookie outlives the browser session.</param>
+    /// <returns>A task that completes when the cookie is set.</returns>
+    public static async Task SignInAsync(HttpContext httpContext, User user, bool isPersistent)
+    {
+        ArgumentNullException.ThrowIfNull(httpContext);
+        await httpContext.SignInAsync(
+            CookieAuthenticationDefaults.AuthenticationScheme,
+            CreatePrincipal(user),
+            new AuthenticationProperties { IsPersistent = isPersistent });
     }
 
     private async Task TryRehashAsync(User user, string password, CancellationToken cancellationToken)

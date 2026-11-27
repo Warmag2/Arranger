@@ -4,8 +4,8 @@ using System.Net;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
-using Faemiyah.Arranger.Contracts;
 using Faemiyah.Arranger.Contracts.Arrangements;
+using Faemiyah.Common;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.SignalR.Client;
@@ -142,9 +142,9 @@ public sealed class ArrangementLiveConnection : IAsyncDisposable
                     _navigation.NavigateToLogin();
                     return;
                 }
-                catch (Exception exception) when (exception is HttpRequestException or AggregateException)
+                catch (Exception) when (!_stopping.IsCancellationRequested)
                 {
-                    // The server is unreachable. Try again after a delay.
+                    // The server is unreachable or the connection failed. Try again after a delay.
                 }
             }
 

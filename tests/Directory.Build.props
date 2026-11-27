@@ -4,8 +4,9 @@
   <Import Project="$([MSBuild]::GetPathOfFileAbove($(MSBuildThisFileName)$(MSBuildThisFileExtension), $(MSBuildThisFileDirectory)..\))" />
 
   <PropertyGroup>
-    <!-- Test classes are not consumed as an API, so missing XML documentation is not worth warning about. -->
-    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <!-- Test classes are not consumed as an API, so missing XML documentation is not worth warning about. The file is
+         still generated, because the build only reports unused usings (IDE0005) when it is. -->
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

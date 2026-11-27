@@ -8,7 +8,7 @@ public static class ArrangementHubProtocol
     /// <summary>
     /// The hub path, relative to the application base.
     /// </summary>
-    public const string Path = "hubs/arrangement";
+    public const string Path = $"{ApiRoutes.Hubs}/arrangement";
 
     /// <summary>
     /// <c>Subscribe(Guid arrangementId)</c>: start receiving <see cref="IArrangementClient"/> messages for an

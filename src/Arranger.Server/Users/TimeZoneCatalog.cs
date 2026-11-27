@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Faemiyah.Arranger.Contracts.Accounts;
 using Faemiyah.Arranger.Contracts.Users;
 
 namespace Faemiyah.Arranger.Server.Users;
@@ -11,6 +12,7 @@ namespace Faemiyah.Arranger.Server.Users;
 public sealed class TimeZoneCatalog
 {
     private readonly TimeProvider _timeProvider;
+    private readonly IReadOnlyDictionary<string, TimeZoneInfo> _zones = LoadZones();
 
     /// <summary>
     /// Initializes a new instance of the <see cref="TimeZoneCatalog"/> class.
@@ -25,13 +27,29 @@ public sealed class TimeZoneCatalog
     /// Get the time zones with their current offsets, ordered by offset and then ID.
     /// </summary>
     /// <remarks>
-    /// Computed per call, since offsets change with daylight saving time.
+    /// The zones are loaded once, but the offsets are computed per call, since they change with daylight saving time.
     /// </remarks>
     /// <returns>The time zones.</returns>
     public IReadOnlyList<TimeZoneOption> GetTimeZones()
     {
         var now = _timeProvider.GetUtcNow();
-        var zones = new Dictionary<string, TimeSpan>(StringComparer.Ordinal) { ["UTC"] = TimeSpan.Zero };
+        return _zones
+            .Select(z => (Id: z.Key, Offset: z.Value.GetUtcOffset(now)))
+            .OrderBy(z => z.Offset)
+            .ThenBy(z => z.Id, StringComparer.Ordinal)
+            .Select(z => new TimeZoneOption(z.Id, $"(UTC{FormatOffset(z.Offset)}) {z.Id.Replace('_', ' ')}"))
+            .ToList();
+    }
+
+    private static string FormatOffset(TimeSpan offset)
+    {
+        var sign = offset < TimeSpan.Zero ? "-" : "+";
+        return $"{sign}{offset.Duration():hh\\:mm}";
+    }
+
+    private static Dictionary<string, TimeZoneInfo> LoadZones()
+    {
+        var zones = new Dictionary<string, TimeZoneInfo>(StringComparer.Ordinal) { [AccountRules.DefaultTimeZoneId] = TimeZoneInfo.Utc };
 
         foreach (var zone in TimeZoneInfo.GetSystemTimeZones())
         {
@@ -42,22 +60,12 @@ public sealed class TimeZoneCatalog
                 continue;
             }
 
-            if (id.Length <= Contracts.Accounts.AccountRules.TimeZoneIdMaxLength && !id.StartsWith("Etc/", StringComparison.Ordinal))
+            if (id.Length <= AccountRules.TimeZoneIdMaxLength && !id.StartsWith("Etc/", StringComparison.Ordinal))
             {
-                zones.TryAdd(id, zone.GetUtcOffset(now));
+                zones.TryAdd(id, zone);
             }
         }
 
-        return zones
-            .OrderBy(z => z.Value)
-            .ThenBy(z => z.Key, StringComparer.Ordinal)
-            .Select(z => new TimeZoneOption(z.Key, $"(UTC{FormatOffset(z.Value)}) {z.Key.Replace('_', ' ')}"))
-            .ToList();
-    }
-
-    private static string FormatOffset(TimeSpan offset)
-    {
-        var sign = offset < TimeSpan.Zero ? "-" : "+";
-        return $"{sign}{offset.Duration():hh\\:mm}";
+        return zones;
     }
 }

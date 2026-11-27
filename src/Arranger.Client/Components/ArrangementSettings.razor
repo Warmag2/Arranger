@@ -1,11 +1,10 @@
+@inherits ArrangementComponentBase
 @inject ArrangerApi Api
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
 
 @{
-    var me = Snapshot.FindMember(UserId);
-    var isOwner = me != null && Snapshot.OwnerUserId == UserId;
-    var isAdmin = me?.IsAdmin == true;
+    var isOwner = Me != null && Snapshot.OwnerUserId == UserId;
     var link = Navigation.ToAbsoluteUri(Snapshot.Id.ToString()).ToString();
 }
 
@@ -14,7 +13,7 @@
         Link
     </h2>
     <div class="form form-submit">
-        <input class="input-button" readonly value="@link" aria-label="Link to this arrangement" />
+        <input class="link-box" readonly value="@link" aria-label="Link to this arrangement" />
         <button class="button button-submit" @onclick="() => CopyAsync(link)">@(copied ? "Copied" : "Copy")</button>
     </div>
     @if (copyFailed)
@@ -35,7 +34,7 @@
                     <th scope="col">Role</th>
                     @if (isOwner)
                     {
-                        <th scope="col"></th>
+                        <th scope="col"><span class="visually-hidden">Actions</span></th>
                     }
                 </tr>
             </thead>
@@ -44,18 +43,11 @@
                 {
                     <tr>
                         <td>
-                            <UserAvatar UserId="member.UserId" />
+                            <UserAvatar UserId="member.UserId" UserName="@member.UserName" PictureVersion="member.PictureVersion" />
                             <span>@member.UserName</span>
                         </td>
                         <td>
-                            @if (member.UserId == Snapshot.OwnerUserId)
-                            {
-                                <span class="badge badge-owner">Owner</span>
-                            }
-                            else if (member.IsAdmin)
-                            {
-                                <span class="badge badge-admin">Admin</span>
-                            }
+                            <RoleBadge IsOwner="member.UserId == Snapshot.OwnerUserId" IsAdmin="member.IsAdmin" />
                         </td>
                         @if (isOwner)
                         {
@@ -75,9 +67,12 @@
     </div>
 </section>
 
-<CurrencySettings Snapshot="Snapshot" UserId="UserId" Busy="Busy" Run="Run" />
+@if (!Snapshot.IsExpensesDisabled)
+{
+    <CurrencySettings Snapshot="Snapshot" UserId="UserId" Busy="Busy" Run="Run" />
+}
 
-@if (isAdmin)
+@if (IsAdmin)
 {
     <section>
         <h2>
@@ -87,7 +82,7 @@
             <div class="form form-switch">
                 <input type="checkbox" id="new-times" checked="@(Snapshot.AllowNewTimes)" disabled="@Busy"
                        @onchange="e => SetNewTimesAsync((bool)e.Value!)" />
-                <label for="new-times">Allow regular users to add and remove times</label>
+                <label for="new-times">Participants may edit time options</label>
             </div>
             <div class="form form-switch">
                 <input type="checkbox" id="participation" checked="@(Snapshot.AllowNewUsers)" disabled="@Busy"
@@ -96,12 +91,12 @@
             </div>
             <div class="form form-switch">
                 <input type="checkbox" id="schedule-enabled" checked="@(!Snapshot.IsScheduleDisabled)" disabled="@Busy"
-                       @onchange="e => SetTabsAsync((bool)e.Value!, !Snapshot.IsExpensesDisabled)" />
+                       @onchange="e => SetTabsAsync(!(bool)e.Value!, Snapshot.IsExpensesDisabled)" />
                 <label for="schedule-enabled">Schedule enabled</label>
             </div>
             <div class="form form-switch">
                 <input type="checkbox" id="expenses-enabled" checked="@(!Snapshot.IsExpensesDisabled)" disabled="@Busy"
-                       @onchange="e => SetTabsAsync(!Snapshot.IsScheduleDisabled, (bool)e.Value!)" />
+                       @onchange="e => SetTabsAsync(Snapshot.IsScheduleDisabled, !(bool)e.Value!)" />
                 <label for="expenses-enabled">Expenses enabled</label>
             </div>
             <p class="secondary">
@@ -111,10 +106,12 @@
 
         <form @onsubmit="UpdateDetailsAsync">
             <div class="form">
-                <input placeholder="Title" maxlength="@ArrangementRules.TitleMaxLength" @bind="title" />
+                <label for="arrangement-title">Title</label>
+                <input id="arrangement-title" maxlength="@ArrangementRules.TitleMaxLength" @bind="title" />
             </div>
             <div class="form">
-                <textarea rows="3" placeholder="Description" maxlength="@ArrangementRules.DescriptionMaxLength" @bind="description"></textarea>
+                <label for="arrangement-description">Description</label>
+                <textarea id="arrangement-description" rows="3" maxlength="@ArrangementRules.DescriptionMaxLength" @bind="description"></textarea>
             </div>
             @if (detailsError != null)
             {
@@ -135,7 +132,7 @@
         }
     </section>
 }
-else if (me != null)
+else if (Me != null)
 {
     <section>
         <button class="button button-delete" disabled="@Busy" @onclick="LeaveAsync">Leave arrangement</button>
@@ -159,30 +156,6 @@ else if (me != null)
     private bool copyFailed;
     private int attempts;
 
-    /// <summary>
-    /// The arrangement.
-    /// </summary>
-    [Parameter, EditorRequired]
-    public ArrangementSnapshot Snapshot { get; set; } = null!;
-
-    /// <summary>
-    /// The viewer's user ID.
-    /// </summary>
-    [Parameter, EditorRequired]
-    public Guid UserId { get; set; }
-
-    /// <summary>
-    /// Whether a command is in progress.
-    /// </summary>
-    [Parameter]
-    public bool Busy { get; set; }
-
-    /// <summary>
-    /// Runs a command: the method, the path under the arrangement or <b>null</b> for the arrangement itself, and the body.
-    /// </summary>
-    [Parameter, EditorRequired]
-    public Func<HttpMethod, string?, object?, Task<bool>> Run { get; set; } = null!;
-
     /// <inheritdoc />
     protected override void OnParametersSet()
     {
@@ -200,21 +173,21 @@ else if (me != null)
         Redraw();
     }
 
-    private async Task SetNewTimesAsync(bool isOpen)
+    private async Task SetNewTimesAsync(bool isAllowed)
     {
-        await Run(HttpMethod.Put, "new-times", new SetAllowNewTimesRequest(isOpen));
+        await Run(HttpMethod.Put, "new-times", new SetAllowNewTimesRequest(isAllowed));
         Redraw();
     }
 
-    private async Task SetTabsAsync(bool isScheduleEnabled, bool isExpensesEnabled)
+    private async Task SetTabsAsync(bool isScheduleDisabled, bool isExpensesDisabled)
     {
-        await Run(HttpMethod.Put, "tabs", new SetTabsRequest(isScheduleEnabled, isExpensesEnabled));
+        await Run(HttpMethod.Put, "tabs", new SetTabsRequest(isScheduleDisabled, isExpensesDisabled));
         Redraw();
     }
 
     private async Task LeaveAsync()
     {
-        if (await JS.InvokeAsync<bool>("confirm", $"Leave \"{Snapshot.Title}\"?") && await Run(HttpMethod.Post, "leave", null))
+        if (await JS.ConfirmAsync($"Leave \"{Snapshot.Title}\"?") && await Run(HttpMethod.Post, "leave", null))
         {
             Navigation.NavigateTo(string.Empty);
         }
@@ -233,7 +206,7 @@ else if (me != null)
 
     private async Task UpdateDetailsAsync()
     {
-        detailsError = ArrangementRules.ValidateDetails(ArrangementRules.NormalizeText(title), ArrangementRules.NormalizeText(description));
+        detailsError = ArrangementRules.NormalizeDetails(title, description).Error;
         if (detailsError == null)
         {
             await Run(HttpMethod.Put, null, new UpdateArrangementDetailsRequest(title, description));
@@ -242,14 +215,21 @@ else if (me != null)
 
     private async Task DeleteAsync()
     {
-        if (!await JS.InvokeAsync<bool>("confirm", $"Delete \"{Snapshot.Title}\" and everything in it? This cannot be undone."))
+        if (!await JS.ConfirmAsync($"Delete \"{Snapshot.Title}\" and everything in it? This cannot be undone."))
         {
             return;
         }
 
         deleting = true;
-        deleteError = await Api.SendAsync(HttpMethod.Delete, $"api/arrangements/{Snapshot.Id}");
-        deleting = false;
+        try
+        {
+            deleteError = await Api.SendAsync(HttpMethod.Delete, ApiRoutes.Arrangement(Snapshot.Id));
+        }
+        finally
+        {
+            deleting = false;
+        }
+
         if (deleteError == null)
         {
             Navigation.NavigateTo(string.Empty);

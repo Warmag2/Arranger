@@ -1,5 +1,3 @@
-using Faemiyah.Arranger.Data.Entities;
-
 namespace Faemiyah.Arranger.Server.Authentication;
 
 /// <summary>

@@ -9,6 +9,11 @@ namespace Faemiyah.Arranger.Grains;
 public static class CurrencyRateServiceCollectionExtensions
 {
     /// <summary>
+    /// How long one request to the upstream service may take.
+    /// </summary>
+    private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(10);
+
+    /// <summary>
     /// The base address of the free upstream exchange rate service (no API key required).
     /// </summary>
     private static readonly Uri UpstreamBaseAddress = new("https://open.er-api.com/");
@@ -24,7 +29,7 @@ public static class CurrencyRateServiceCollectionExtensions
         services.AddHttpClient(CurrencyRateProvider.HttpClientName, client =>
         {
             client.BaseAddress = UpstreamBaseAddress;
-            client.Timeout = TimeSpan.FromSeconds(10);
+            client.Timeout = RequestTimeout;
         });
         services.AddSingleton<ICurrencyRateProvider, CurrencyRateProvider>();
         return services;

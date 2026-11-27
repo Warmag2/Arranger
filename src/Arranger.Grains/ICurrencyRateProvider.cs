@@ -15,11 +15,10 @@ public interface ICurrencyRateProvider
     /// </summary>
     /// <param name="baseCurrency">The ISO 4217 currency one unit is priced in.</param>
     /// <param name="currencies">The ISO 4217 currencies to price.</param>
-    /// <param name="forceRefresh"><b>true</b> to refetch the rates even when the cached ones are still fresh.</param>
     /// <param name="cancellationToken">The cancellation token.</param>
     /// <returns>
     /// The rate for each currency that could be priced, keyed by currency. Currencies the upstream service does not
     /// cover, or that cannot be priced, are left out rather than guessed.
     /// </returns>
-    Task<IReadOnlyDictionary<string, decimal>> GetRatesAsync(string baseCurrency, IReadOnlyCollection<string> currencies, bool forceRefresh, CancellationToken cancellationToken = default);
+    Task<IReadOnlyDictionary<string, decimal>> GetRatesAsync(string baseCurrency, IReadOnlyCollection<string> currencies, CancellationToken cancellationToken = default);
 }

@@ -16,6 +16,11 @@ public static class Currencies
     public const string Default = "EUR";
 
     /// <summary>
+    /// The length of a currency code.
+    /// </summary>
+    public const int CodeLength = 3;
+
+    /// <summary>
     /// All currencies, ordered by code.
     /// </summary>
     public static IReadOnlyList<Currency> All { get; } =

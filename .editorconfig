@@ -2,6 +2,10 @@
 ## Actual settings
 ##
 
+[*.{cs,razor}]
+# Editor hint only; Roslyn does not enforce it.
+max_line_length = 132
+
 [*.cs]
 # Organize usings
 csharp_using_directive_placement = outside_namespace
@@ -15,7 +19,7 @@ csharp_prefer_system_threading_lock = true
 csharp_style_namespace_declarations = file_scoped:error
 csharp_style_prefer_method_group_conversion = true:suggestion
 csharp_style_prefer_primary_constructors = true
-csharp_style_prefer_top_level_statements = false:warning
+csharp_style_prefer_top_level_statements = true:silent
 
 # Expression-bodied members
 csharp_style_expression_bodied_accessors = when_on_single_line:suggestion

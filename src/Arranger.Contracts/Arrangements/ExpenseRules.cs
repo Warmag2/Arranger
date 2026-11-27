@@ -68,6 +68,17 @@ public static class ExpenseRules
     }
 
     /// <summary>
+    /// Validate an exchange rate and its conversion loss.
+    /// </summary>
+    /// <param name="rate">The units of a currency one unit of the base currency buys, or <b>null</b> when not known.</param>
+    /// <param name="lossPercent">The average loss on conversion, in percent.</param>
+    /// <returns>An error message, or <b>null</b> when valid.</returns>
+    public static string? ValidateExchangeRate(decimal? rate, decimal lossPercent)
+    {
+        return (rate is { } value ? ValidateRate(value) : null) ?? ValidateLoss(lossPercent);
+    }
+
+    /// <summary>
     /// Validate an expense whose description is normalized. Membership is checked by the server.
     /// </summary>
     /// <param name="request">The expense.</param>
@@ -101,9 +112,9 @@ public static class ExpenseRules
             return $"{request.Currency} amounts have at most {decimals} decimals.";
         }
 
-        if (request.Date.Year < ArrangementRules.MinTimeOptionYear || request.Date.Year > ArrangementRules.MaxTimeOptionYear)
+        if (request.Date.Year < ArrangementRules.MinYear || request.Date.Year > ArrangementRules.MaxYear)
         {
-            return $"The date must be between the years {ArrangementRules.MinTimeOptionYear} and {ArrangementRules.MaxTimeOptionYear}.";
+            return $"The date must be between the years {ArrangementRules.MinYear} and {ArrangementRules.MaxYear}.";
         }
 
         var participants = request.ParticipantUserIds;
